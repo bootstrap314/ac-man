@@ -1,0 +1,41 @@
+# Rust, Swift, and packaged build outputs. Cargo.lock is intentionally tracked.
+/target/
+/dist/
+/dist-app.*/
+/release-assets/
+/licenses/
+/generated/
+/bin/
+*.app
+*.dSYM/
+.build/
+
+# Local device labels, cloud identity, and diagnostics.
+/data/
+/work/
+settings.json
+client.json
+status.json
+*.log
+*.pid
+
+# Credentials must never be committed or sent as Docker build context.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.json
+
+# Legacy Python runtime and local editor state.
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo

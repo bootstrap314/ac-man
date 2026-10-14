@@ -1,0 +1,26 @@
+# Licenses for the currently selected dependency graph. New license obligations
+# should fail generation until reviewed, rather than being silently omitted.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Unicode-3.0",
+    "CDLA-Permissive-2.0",
+    "OpenSSL",
+    "Zlib",
+]
+
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+]
+ignore-build-dependencies = false
+ignore-dev-dependencies = true
+ignore-transitive-dependencies = false
+
+# The application itself is not a third-party dependency. Cargo.toml marks it
+# publish = false; this does not assign a license to the application's own code.
+private = { ignore = true }

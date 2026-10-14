@@ -1,0 +1,19 @@
+# Only the Rust CLI source and locked build inputs enter the build context.
+# In particular, exclude app bundles, local device data, credentials and .git.
+**
+!Dockerfile
+!.dockerignore
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!build.rs
+!src/
+!src/**
+!tests/
+!tests/*.rs
+!tests/fixtures/
+!tests/fixtures/**
+!THIRD_PARTY_NOTICES.md
+!LICENSE
+!licenses/
+!licenses/DEPENDENCIES.html

@@ -1,0 +1,13 @@
+[package]
+name = "ac_control"
+crate = "ac-control"
+
+[targets.apple]
+output = "generated/apple"
+ios_architectures = []
+simulator_architectures = []
+include_macos = true
+macos_architectures = ["arm64"]
+
+[targets.apple.swift]
+module_name = "AcControl"

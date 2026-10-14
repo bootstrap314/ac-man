@@ -1,0 +1,112 @@
+name: Tests and security
+
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      revision:
+        description: Exact commit to check when called by the release workflow
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.revision || 'default' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+  RUSTUP_TOOLCHAIN: '1.98.1'
+
+jobs:
+  tests:
+    name: Test (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, macos-15, macos-15-intel]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.revision || github.sha }}
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Check with Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Run tests without cloud credentials
+        run: cargo test --locked --all-targets
+      - name: Build CLI
+        run: cargo build --release --locked --bin ac-control
+      - name: Check CLI starts
+        run: target/release/ac-control --help
+      - name: Install pinned Apple build tools and generate notices
+        if: matrix.runner == 'macos-15'
+        run: |
+          cargo install boltffi_cli --version 0.30.1 --locked
+          cargo install cargo-about --version 0.9.1 --locked --features cli
+          mkdir -p licenses
+          cargo about generate --locked --fail --target aarch64-apple-darwin \
+            -o licenses/DEPENDENCIES.html about.hbs
+      - name: Build Swift menu-bar application
+        if: matrix.runner == 'macos-15'
+        run: ./build.sh
+
+  security:
+    name: Dependency, source, and container scans
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.revision || github.sha }}
+          persist-credentials: false
+      - name: Install pinned Rust and audit tools
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo install cargo-about --version 0.9.1 --locked --features cli
+      - name: Check Cargo.lock against the RustSec advisory database
+        run: cargo audit --file Cargo.lock
+      - name: Install checksum-pinned Trivy
+        # SHA256 from the official immutable v0.76.0 Linux-64bit release asset.
+        # Keep version and digest together when updating; never use an install-script pipe.
+        run: |
+          tool_dir="$RUNNER_TEMP/trivy-bin"
+          mkdir -p "$tool_dir"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            'https://github.com/aquasecurity/trivy/releases/download/v0.76.0/trivy_0.76.0_Linux-64bit.tar.gz' \
+            --output "$RUNNER_TEMP/trivy.tar.gz"
+          printf '%s  %s\n' 'e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7' "$RUNNER_TEMP/trivy.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/trivy.tar.gz" -C "$tool_dir" trivy
+          printf '%s\n' "$tool_dir" >> "$GITHUB_PATH"
+      - name: Scan source, dependencies, secrets, and configuration
+        env:
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
+        run: |
+          trivy fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL \
+            --exit-code 1 --timeout 10m --skip-dirs target --skip-dirs dist .
+      - name: Build the non-root CLI container
+        run: |
+          mkdir -p licenses
+          cargo about generate --locked --fail --target x86_64-unknown-linux-gnu \
+            -o licenses/DEPENDENCIES.html about.hbs
+          docker build --target runtime --tag ac-control:scan .
+      - name: Scan the built container
+        env:
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
+        run: |
+          trivy image --scanners vuln,secret --severity HIGH,CRITICAL \
+            --exit-code 1 --timeout 10m ac-control:scan
