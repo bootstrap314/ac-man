@@ -45,14 +45,14 @@ Paste that into `MACOS_CERTIFICATE_P12`. Paste the P12 password directly into it
 2. Write the feature notes for the version, then create and push a signed annotated tag. The workflow publishes the tag annotation as the release notes. For the first release:
 
    ```sh
-   git tag -s v0.0.1 -F docs/releases/v0.0.1.md
+   git tag -s v0.0.1 --cleanup=verbatim -F docs/releases/v0.0.1.md
    git push origin v0.0.1
    ```
 
 3. Choose **Actions → Release selected tag → Run workflow**. Select the trusted default branch for the workflow and enter the existing tag, such as `v0.0.1`, in the `tag` input.
 4. Approve the `macos-release` environment when its protection rules request review.
 
-The workflow checks the tagged commit, builds the app without signing credentials, and sends its archive to a fresh signing job. That job imports your P12 into a temporary keychain, selects its single valid Developer ID Application identity, and signs with a secure timestamp and Hardened Runtime. It submits the signed app using `notarytool`, requires an **Accepted** result, staples and validates the ticket, and runs Gatekeeper assessment. It then creates the final ZIP from the stapled app. See [Apple's notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow).
+The reusable CI workflow checks the tagged commit and builds the app once without signing credentials. It verifies and packages that exact build, then uploads the unsigned archive with a one-day retention. Standalone CI uses the commit SHA as its archive label; release calls supply the selected tag. After every verification job succeeds, a fresh signing job downloads the archive from the same workflow run. That job imports your P12 into a temporary keychain, selects its single valid Developer ID Application identity, and signs with a secure timestamp and Hardened Runtime. It submits the signed app using `notarytool`, requires an **Accepted** result, staples and validates the ticket, and runs Gatekeeper assessment. It then creates the final ZIP from the stapled app. See [Apple's notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow).
 
 Only the final publish job can create the GitHub release. It receives the completed signed app and CLI artifacts, computes `SHA256SUMS`, records the source commit, and checks that the tag has not moved. The unsigned intermediate app is not a release asset. The separate CLI archives are outside the app's notarization flow.
 

@@ -65,6 +65,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       revision: ${{ needs.resolve.outputs.commit }}
+      release_tag: ${{ needs.resolve.outputs.tag }}
     permissions:
       contents: read
 
@@ -115,45 +116,16 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  app:
-    name: Build macOS Apple Silicon application
-    needs: [resolve, checks]
-    runs-on: macos-15
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.resolve.outputs.commit }}
-          persist-credentials: false
-      - name: Build and package the Swift application
-        env:
-          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
-        run: |
-          rustup toolchain install 1.98.1 --profile minimal
-          cargo install boltffi_cli --version 0.30.1 --locked
-          cargo install cargo-about --version 0.9.1 --locked --features cli
-          mkdir -p licenses
-          cargo about generate --locked --fail --target aarch64-apple-darwin \
-            -o licenses/DEPENDENCIES.html about.hbs
-          ./build.sh
-          codesign --verify --deep --strict 'dist/ac-man.app'
-          ./scripts/package-release.sh app "$RELEASE_TAG" aarch64-apple-darwin
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: unsigned-app-aarch64-apple-darwin
-          path: release-assets/*
-          if-no-files-found: error
-          retention-days: 1
-
   sign-app:
     name: Sign and notarize macOS application
-    needs: [resolve, app]
+    needs: [resolve, checks]
     runs-on: macos-15
     timeout-minutes: 30
     environment: macos-release
     permissions:
       contents: read
       actions: read
+    # Consume the app built by CI in this run only after all checks pass.
     # This fresh runner never checks out, builds, or executes the selected tag's
     # code. Only this job receives Apple credentials, through environment secrets.
     steps:
