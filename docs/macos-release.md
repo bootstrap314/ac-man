@@ -42,14 +42,14 @@ Paste that into `MACOS_CERTIFICATE_P12`. Paste the P12 password directly into it
 ## Publish a version
 
 1. Push the completed source and release workflow to GitHub.
-2. Create and push the intended version tag, for example:
+2. Write the feature notes for the version, then create and push a signed annotated tag. The workflow publishes the tag annotation as the release notes. For the first release:
 
    ```sh
-   git tag v2.0.0
-   git push origin v2.0.0
+   git tag -s v0.0.1 -F docs/releases/v0.0.1.md
+   git push origin v0.0.1
    ```
 
-3. Choose **Actions → Release selected tag → Run workflow**. Select the trusted default branch for the workflow and enter the existing tag, such as `v2.0.0`, in the `tag` input.
+3. Choose **Actions → Release selected tag → Run workflow**. Select the trusted default branch for the workflow and enter the existing tag, such as `v0.0.1`, in the `tag` input.
 4. Approve the `macos-release` environment when its protection rules request review.
 
 The workflow checks the tagged commit, builds the app without signing credentials, and sends its archive to a fresh signing job. That job imports your P12 into a temporary keychain, selects its single valid Developer ID Application identity, and signs with a secure timestamp and Hardened Runtime. It submits the signed app using `notarytool`, requires an **Accepted** result, staples and validates the ticket, and runs Gatekeeper assessment. It then creates the final ZIP from the stapled app. See [Apple's notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow).
