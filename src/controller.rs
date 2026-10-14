@@ -324,7 +324,7 @@ impl Inner {
             self.restore().await?;
         }
         if self.cloud.session.is_none() {
-            return Err(problem("Sign in first: ac-control login"));
+            return Err(problem("Sign in first: ac-man login"));
         }
         Ok(())
     }

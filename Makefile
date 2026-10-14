@@ -5,7 +5,7 @@ CARGO ?= cargo
 BOLTFFI ?= boltffi
 TRIVY ?= trivy
 DOCKER ?= docker
-IMAGE ?= ac-control:local
+IMAGE ?= ac-man:local
 DOCKER_OUTPUT ?= dist/docker
 
 .PHONY: help fmt fmt-check check test clippy cli app bindings audit trivy security ci licenses docker-build docker-test docker-export trivy-image
@@ -46,7 +46,7 @@ clippy:
 	$(CARGO) clippy --locked --all-targets -- -D warnings
 
 cli:
-	$(CARGO) build --locked --release --bin ac-control
+	$(CARGO) build --locked --release --bin ac-man
 
 app:
 	./build.sh

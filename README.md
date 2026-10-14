@@ -1,6 +1,6 @@
-# Midea Control
+# ac-man
 
-Control Midea air conditioners through SmartHome / MSmartHome cloud from a macOS menu-bar app or the `ac-control` command-line tool. Both interfaces use the same asynchronous Rust core; [BoltFFI](https://github.com/boltffi/boltffi) connects it directly to the native Swift interface. Python, a local web server, and Home Assistant are not required.
+Control Midea air conditioners through SmartHome / MSmartHome cloud from a macOS menu-bar app or the `ac-man` command-line tool. Both interfaces use the same asynchronous Rust core; [BoltFFI](https://github.com/boltffi/boltffi) connects it directly to the native Swift interface. Python, a local web server, and Home Assistant are not required.
 
 Sign in with your own SmartHome account. The controller discovers the air conditioners available to that account, imports their names, and assigns stable local integer IDs. There is no built-in household inventory or fixed device limit. Your computer needs internet access, but it does not need to join the ACs' Wi-Fi network. The ACs must remain online.
 
@@ -8,11 +8,11 @@ This is an unofficial community client. Model capabilities and SmartHome service
 
 ## Menu-bar application
 
-<img src="docs/images/ac-controls.png" alt="AC control window showing temperature, mode, fan percentage, Auto, Boost, and swing" width="430">
+<img src="docs/images/ac-man-controls.jpg" alt="AC control window showing temperature, mode, fan percentage, Auto, Boost, and swing" width="430">
 
 The control window opened by selecting a room in the menu bar. The screenshot uses an example room label.
 
-Open **Midea Control.app**, then click its air-conditioner icon in the menu bar. Sign in and choose a discovered AC to see its status and controls:
+Open **ac-man.app**, then click its air-conditioner icon in the menu bar. Sign in and choose a discovered AC to see its status and controls:
 
 - Power, target temperature in Celsius, operating mode, and swing.
 - Fan speed as a percentage slider, with an **Auto** option.
@@ -25,42 +25,42 @@ The Swift interface awaits Rust operations asynchronously. Network requests do n
 
 ## Command-line use
 
-After building, use `target/release/ac-control`, `dist/bin/ac-control`, or place the downloaded `ac-control` executable on your `PATH`.
+After building, use `target/release/ac-man`, `dist/bin/ac-man`, or place the downloaded `ac-man` executable on your `PATH`.
 
 ```sh
-ac-control login
-ac-control list
-ac-control list --refresh
-ac-control 1 status
+ac-man login
+ac-man list
+ac-man list --refresh
+ac-man 1 status
 ```
 
-`login` prompts for your SmartHome email and then reads the password without displaying it. You may supply the email as `ac-control login user@example.com`. There is deliberately no `--password` argument, so the password does not need to appear in shell history or process arguments.
+`login` prompts for your SmartHome email and then reads the password without displaying it. You may supply the email as `ac-man login user@example.com`. There is deliberately no `--password` argument, so the password does not need to appear in shell history or process arguments.
 
-For automation, `ac-control login user@example.com --password-stdin` reads one password line from standard input. Pipe it directly from your password manager or secret provider; do not type the password into the command or put it in an environment variable.
+For automation, `ac-man login user@example.com --password-stdin` reads one password line from standard input. Pipe it directly from your password manager or secret provider; do not type the password into the command or put it in an environment variable.
 
 Device commands follow this structure:
 
 ```text
-ac-control <assigned integer ID or room name> <command> [options]
+ac-man <assigned integer ID or room name> <command> [options]
 ```
 
-For example, after checking the IDs in `ac-control list`:
+For example, after checking the IDs in `ac-man list`:
 
 ```sh
-ac-control 1 on
-ac-control 1 temperature 23.5
-ac-control 1 mode cool
-ac-control 1 fan 37
-ac-control 1 fan auto
-ac-control 1 boost on
-ac-control 1 boost off
-ac-control 1 swing vertical
-ac-control 1 set --power on --temperature 23 --mode cool --fan auto --boost off
-ac-control 1 off
+ac-man 1 on
+ac-man 1 temperature 23.5
+ac-man 1 mode cool
+ac-man 1 fan 37
+ac-man 1 fan auto
+ac-man 1 boost on
+ac-man 1 boost off
+ac-man 1 swing vertical
+ac-man 1 set --power on --temperature 23 --mode cool --fan auto --boost off
+ac-man 1 off
 
-ac-control 1 rename "Office"
-ac-control "Office" id 7
-ac-control 7 status --json
+ac-man 1 rename "Office"
+ac-man "Office" id 7
+ac-man 7 status --json
 ```
 
 Labels match without regard to case; quote labels containing spaces. A label or assigned ID changes only this controller's local mapping, not the name in the phone app. IDs must be unique positive integers and survive restarts and later discovery. Use an integer ID if imported cloud names are ambiguous. Rename and ID commands work offline.
@@ -78,9 +78,9 @@ Labels match without regard to case; quote labels containing spaces. A label or 
 | `rename` | New local label, up to 60 characters |
 | `id` | New unique positive integer |
 
-Only settings supported by the selected AC are accepted. Use `ac-control --help` or `ac-control 1 --help` for the parser's full help. `--json` is available globally. Cloud failures and invalid settings produce a nonzero exit status. If a change cannot be confirmed, refresh the device before deciding whether to repeat it.
+Only settings supported by the selected AC are accepted. Use `ac-man --help` or `ac-man 1 --help` for the parser's full help. `--json` is available globally. Cloud failures and invalid settings produce a nonzero exit status. If a change cannot be confirmed, refresh the device before deciding whether to repeat it.
 
-`ac-control list` reads the local inventory without contacting the cloud; `list --refresh` fetches live state. Sign in again to refresh the cloud inventory after adding an AC. `ac-control logout` removes the saved login and cloud session from this computer's credential store.
+`ac-man list` reads the local inventory without contacting the cloud; `list --refresh` fetches live state. Sign in again to refresh the cloud inventory after adding an AC. `ac-man logout` removes the saved login and cloud session from this computer's credential store.
 
 ## Credentials and local data
 
@@ -95,7 +95,7 @@ The app and CLI share the default application-data directory:
 
 This directory contains device inventory, local labels and IDs, a stable client identity, and status diagnostics. It does not contain login passwords or session tokens. Room names and device details are still private information; do not include the directory in public issues or source archives. New Unix data files use owner-only permissions.
 
-Use `--data-dir PATH` for the CLI, or `AC_CONTROL_DATA_DIR` for either interface, to select another private data directory. Use the same directory for both interfaces when sharing labels and IDs. This changes the data location; it does not create a separate OS credential-store account.
+Use `--data-dir PATH` for the CLI, or `AC_MAN_DATA_DIR` for either interface, to select another private data directory. Use the same directory for both interfaces when sharing labels and IDs. This changes the data location; it does not create a separate OS credential-store account. `AC_CONTROL_DATA_DIR` remains a fallback for existing installations. The default storage paths and credential identifiers retain their historical names so existing sessions and room labels keep working.
 
 See [SECURITY.md](SECURITY.md) for reporting, network boundaries, credential handling, and release safeguards.
 
@@ -108,7 +108,7 @@ For the CLI, install Rust through `rustup` and the platform's C build tools. On 
 ```sh
 rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
 make cli
-./target/release/ac-control --help
+./target/release/ac-man --help
 ```
 
 For the Apple Silicon menu-bar app, also install the pinned BoltFFI generator and use Xcode Command Line Tools with Swift 5.9 or newer:
@@ -116,10 +116,10 @@ For the Apple Silicon menu-bar app, also install the pinned BoltFFI generator an
 ```sh
 cargo install boltffi_cli --version 0.30.1 --locked
 make app
-open "dist/Midea Control.app"
+open "dist/ac-man.app"
 ```
 
-`build.sh` generates the Apple bindings in `generated/apple`, builds the Swift package from `native/MideaControl.swift`, and produces `dist/Midea Control.app` and `dist/bin/ac-control`. The app loads the Rust core directly through the generated bindings.
+`build.sh` generates the Apple bindings in `generated/apple`, builds the Swift package from `native/AcMan.swift`, and produces `dist/ac-man.app` and `dist/bin/ac-man`. The app loads the Rust core directly through the generated bindings.
 
 The principal source files are:
 
@@ -130,7 +130,7 @@ The principal source files are:
 | `src/controller.rs` | Async operations, command validation, and readback |
 | `src/storage.rs` | Local IDs, labels, file locking, and OS credential storage |
 | `src/cli.rs` | Device-first command syntax and hidden password entry |
-| `native/MideaControl.swift` | Native menu-bar interface |
+| `native/AcMan.swift` | Native menu-bar interface |
 | `boltffi.toml` | Rust-to-Swift binding configuration |
 
 ## Checks and dependency notices
@@ -164,13 +164,13 @@ make docker-test
 make docker-export
 ```
 
-The exported Linux executable is `dist/docker/ac-control`. The x86_64 release is built on Debian 12 and requires glibc 2.36 or newer. Docker builds use the builder's platform; use a Linux x86_64 builder when producing that release target.
+The exported Linux executable is `dist/docker/ac-man`. The x86_64 release is built on Debian 12 and requires glibc 2.36 or newer. Docker builds use the builder's platform; use a Linux x86_64 builder when producing that release target.
 
 An optional runtime image runs as a non-root user and contains dependency notices:
 
 ```sh
 make docker-build
-docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges ac-control:local --help
+docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges ac-man:local --help
 make trivy-image
 ```
 
@@ -192,4 +192,4 @@ All workflow actions use immutable commit pins, and checkout credentials are not
 
 ## License
 
-AC Control is licensed under the [Apache License 2.0](LICENSE). Third-party components retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the generated `licenses/DEPENDENCIES.html` included with release downloads.
+ac-man is licensed under the [Apache License 2.0](LICENSE). Third-party components retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the generated `licenses/DEPENDENCIES.html` included with release downloads.

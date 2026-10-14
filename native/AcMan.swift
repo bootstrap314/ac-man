@@ -1,5 +1,5 @@
 import Cocoa
-import AcControl
+import AcManCore
 
 // The generated async API runs the cloud work on Rust's Tokio runtime.
 // AppKit views remain on the main actor and are created only once.
@@ -61,14 +61,15 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = NSImage(systemSymbolName: "air.conditioner.horizontal", accessibilityDescription: "Air conditioners")
             ?? NSImage(systemSymbolName: "snowflake", accessibilityDescription: "Air conditioners")
-        statusItem.button?.toolTip = "Midea Control"
+        statusItem.button?.toolTip = "ac-man"
         menu.autoenablesItems = false
         menu.delegate = self
         statusItem.menu = menu
         rebuildMenu()
         Task {
             do {
-                let directory = ProcessInfo.processInfo.environment["AC_CONTROL_DATA_DIR"]
+                let directory = ProcessInfo.processInfo.environment["AC_MAN_DATA_DIR"]
+                    ?? ProcessInfo.processInfo.environment["AC_CONTROL_DATA_DIR"]
                     ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Midea Control").path
                 core = try await Task.detached { try AcController(dataDirectory: directory) }.value
                 guard let core else { return }
@@ -97,7 +98,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let main = NSMenu()
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
-        let quit = NSMenuItem(title: "Quit Midea Control", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "Quit ac-man", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenu.addItem(quit); appItem.submenu = appMenu; main.addItem(appItem)
         let edit = NSMenuItem(); edit.title = "Edit"
         let editMenu = NSMenu(title: "Edit")
@@ -142,7 +143,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let login = item("Sign in to SmartHome…", #selector(showLogin(_:)))
             login.isEnabled = core != nil && !authenticating; menu.addItem(login)
         }
-        menu.addItem(.separator()); menu.addItem(item("Quit Midea Control", #selector(quit)))
+        menu.addItem(.separator()); menu.addItem(item("Quit ac-man", #selector(quit)))
     }
 
     private func accept(_ value: AppSnapshot) {
@@ -408,14 +409,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
     private func showError(_ message: String) {
-        let alert = NSAlert(); alert.messageText = "Midea Control"; alert.informativeText = message
+        let alert = NSAlert(); alert.messageText = "ac-man"; alert.informativeText = message
         NSApp.activate(ignoringOtherApps: true); alert.runModal()
     }
     @objc private func quit() { NSApp.terminate(nil) }
 }
 
 @main
-struct MideaControl {
+struct AcMan {
     @MainActor static func main() {
         let application = NSApplication.shared
         let delegate = App(); application.delegate = delegate

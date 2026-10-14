@@ -137,7 +137,7 @@ impl Store {
         match matches.as_slice() {
             [r] => Ok(r.clone()),
             [] => Err(problem(
-                "Unknown device. Run 'ac-control list' to see names and IDs.",
+                "Unknown device. Run 'ac-man list' to see names and IDs.",
             )),
             _ => Err(problem("That room name is ambiguous. Use its integer ID.")),
         }
@@ -251,8 +251,11 @@ pub(crate) fn atomic_json(path: &Path, value: &impl Serialize) -> Result<()> {
     result
 }
 
+// Keep existing storage and credential identifiers so renaming preserves sessions and labels.
 pub fn default_data_directory() -> PathBuf {
-    if let Some(path) = std::env::var_os("AC_CONTROL_DATA_DIR") {
+    if let Some(path) =
+        std::env::var_os("AC_MAN_DATA_DIR").or_else(|| std::env::var_os("AC_CONTROL_DATA_DIR"))
+    {
         return path.into();
     }
     #[cfg(target_os = "macos")]

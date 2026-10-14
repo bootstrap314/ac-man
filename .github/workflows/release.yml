@@ -101,9 +101,9 @@ jobs:
             docker buildx build --target cli \
               --output "type=local,dest=target/$RUST_TARGET/release" .
           else
-            cargo build --release --locked --bin ac-control --target "$RUST_TARGET"
+            cargo build --release --locked --bin ac-man --target "$RUST_TARGET"
           fi
-          "target/$RUST_TARGET/release/ac-control" --help
+          "target/$RUST_TARGET/release/ac-man" --help
           mkdir -p licenses
           cargo about generate --locked --fail --target "$RUST_TARGET" \
             -o licenses/DEPENDENCIES.html about.hbs
@@ -136,7 +136,7 @@ jobs:
           cargo about generate --locked --fail --target aarch64-apple-darwin \
             -o licenses/DEPENDENCIES.html about.hbs
           ./build.sh
-          codesign --verify --deep --strict 'dist/Midea Control.app'
+          codesign --verify --deep --strict 'dist/ac-man.app'
           ./scripts/package-release.sh app "$RELEASE_TAG" aarch64-apple-darwin
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -165,7 +165,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
         run: |
-          archive="$GITHUB_WORKSPACE/incoming/Midea-Control-$RELEASE_TAG-aarch64-apple-darwin.zip"
+          archive="$GITHUB_WORKSPACE/incoming/ac-man-macos-$RELEASE_TAG-aarch64-apple-darwin.zip"
           # Reject archive traversal, links, special files, and oversized inputs
           # before extracting. Treat build artifacts as data, never shell code.
           python3 - "$archive" <<'PY'
@@ -186,8 +186,8 @@ jobs:
           PY
           mkdir -p signed-dist release-assets
           ditto -x -k "$archive" signed-dist
-          test -f 'signed-dist/Midea Control.app/Contents/Info.plist'
-          test -x 'signed-dist/Midea Control.app/Contents/MacOS/MideaControl'
+          test -f 'signed-dist/ac-man.app/Contents/Info.plist'
+          test -x 'signed-dist/ac-man.app/Contents/MacOS/AcMan'
       - name: Sign with Developer ID, notarize, and staple the ticket
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
@@ -237,7 +237,7 @@ jobs:
           print(identities[0])
           PY
           )
-          app="$GITHUB_WORKSPACE/signed-dist/Midea Control.app"
+          app="$GITHUB_WORKSPACE/signed-dist/ac-man.app"
           # The app has one executable with the Rust library linked statically;
           # there are no nested helpers or frameworks needing separate signing.
           codesign --force --timestamp --options runtime --keychain "$keychain" \
@@ -261,7 +261,7 @@ jobs:
           codesign --verify --deep --strict "$app"
           spctl --assess --type execute --verbose=2 "$app"
           # Recreate the ZIP after stapling; the upload ZIP has no stapled ticket.
-          ditto -c -k signed-dist "release-assets/Midea-Control-$RELEASE_TAG-aarch64-apple-darwin.zip"
+          ditto -c -k signed-dist "release-assets/ac-man-macos-$RELEASE_TAG-aarch64-apple-darwin.zip"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: signed-app-aarch64-apple-darwin
@@ -296,10 +296,10 @@ jobs:
           cd release-assets
           # Fixed expected names avoid publishing arbitrary extra build output.
           archives=(
-            "ac-control-$RELEASE_TAG-x86_64-unknown-linux-gnu.tar.gz"
-            "ac-control-$RELEASE_TAG-aarch64-apple-darwin.tar.gz"
-            "ac-control-$RELEASE_TAG-x86_64-apple-darwin.tar.gz"
-            "Midea-Control-$RELEASE_TAG-aarch64-apple-darwin.zip"
+            "ac-man-$RELEASE_TAG-x86_64-unknown-linux-gnu.tar.gz"
+            "ac-man-$RELEASE_TAG-aarch64-apple-darwin.tar.gz"
+            "ac-man-$RELEASE_TAG-x86_64-apple-darwin.tar.gz"
+            "ac-man-macos-$RELEASE_TAG-aarch64-apple-darwin.zip"
           )
           for archive in "${archives[@]}"; do
             test -f "$archive"
@@ -332,10 +332,10 @@ jobs:
           fi
           cd release-assets
           gh release create "$RELEASE_TAG" \
-            "ac-control-$RELEASE_TAG-x86_64-unknown-linux-gnu.tar.gz" \
-            "ac-control-$RELEASE_TAG-aarch64-apple-darwin.tar.gz" \
-            "ac-control-$RELEASE_TAG-x86_64-apple-darwin.tar.gz" \
-            "Midea-Control-$RELEASE_TAG-aarch64-apple-darwin.zip" \
+            "ac-man-$RELEASE_TAG-x86_64-unknown-linux-gnu.tar.gz" \
+            "ac-man-$RELEASE_TAG-aarch64-apple-darwin.tar.gz" \
+            "ac-man-$RELEASE_TAG-x86_64-apple-darwin.tar.gz" \
+            "ac-man-macos-$RELEASE_TAG-aarch64-apple-darwin.zip" \
             SHA256SUMS SOURCE.txt \
             --repo "$GITHUB_REPOSITORY" --verify-tag --target "$RELEASE_COMMIT" \
             --title "$RELEASE_TAG" --generate-notes

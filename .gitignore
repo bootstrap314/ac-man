@@ -9,6 +9,9 @@
 *.app
 *.dSYM/
 .build/
+.swiftpm/
+xcuserdata/
+*.xcuserstate
 
 # Local device labels, cloud identity, and diagnostics.
 /data/

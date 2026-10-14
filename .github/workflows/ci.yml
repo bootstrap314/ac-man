@@ -49,9 +49,9 @@ jobs:
       - name: Run tests without cloud credentials
         run: cargo test --locked --all-targets
       - name: Build CLI
-        run: cargo build --release --locked --bin ac-control
+        run: cargo build --release --locked --bin ac-man
       - name: Check CLI starts
-        run: target/release/ac-control --help
+        run: target/release/ac-man --help
       - name: Install pinned Apple build tools and generate notices
         if: matrix.runner == 'macos-15'
         run: |
@@ -103,10 +103,10 @@ jobs:
           mkdir -p licenses
           cargo about generate --locked --fail --target x86_64-unknown-linux-gnu \
             -o licenses/DEPENDENCIES.html about.hbs
-          docker build --target runtime --tag ac-control:scan .
+          docker build --target runtime --tag ac-man:scan .
       - name: Scan the built container
         env:
           TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
         run: |
           trivy image --scanners vuln,secret --severity HIGH,CRITICAL \
-            --exit-code 1 --timeout 10m ac-control:scan
+            --exit-code 1 --timeout 10m ac-man:scan

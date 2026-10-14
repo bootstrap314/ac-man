@@ -10,15 +10,15 @@ use std::{
 };
 use zeroize::Zeroizing;
 
-const EXAMPLES: &str = "Examples:\n  ac-control login\n  ac-control list\n  ac-control 1 status\n  ac-control 3 fan 37\n  ac-control \"Bedroom\" boost on\n  ac-control 2 set --temperature 23.5 --mode cool --fan auto\n  ac-control 3 rename \"Office\"\n  ac-control 3 id 7\n\nPasswords are prompted without echo; there is no --password argument.";
+const EXAMPLES: &str = "Examples:\n  ac-man login\n  ac-man list\n  ac-man 1 status\n  ac-man 3 fan 37\n  ac-man \"Bedroom\" boost on\n  ac-man 2 set --temperature 23.5 --mode cool --fan auto\n  ac-man 3 rename \"Office\"\n  ac-man 3 id 7\n\nPasswords are prompted without echo; there is no --password argument.";
 
 #[derive(Parser)]
-#[command(name="ac-control",version,about="Control Midea ACs through SmartHome cloud",after_help=EXAMPLES)]
+#[command(name="ac-man",version,about="Control Midea ACs through SmartHome cloud",after_help=EXAMPLES)]
 struct Cli {
     #[arg(
         long,
         global = true,
-        help = "Directory shared with the menu-bar app (or AC_CONTROL_DATA_DIR)"
+        help = "Directory shared with the menu-bar app (or AC_MAN_DATA_DIR)"
     )]
     data_dir: Option<PathBuf>,
     #[arg(long, global = true, help = "Print machine-readable JSON")]
@@ -48,7 +48,7 @@ enum Top {
     Device(Vec<String>),
 }
 #[derive(Parser)]
-#[command(name="ac-control <DEVICE>",about="Use an assigned integer ID or a quoted room name",after_help=EXAMPLES)]
+#[command(name="ac-man <DEVICE>",about="Use an assigned integer ID or a quoted room name",after_help=EXAMPLES)]
 struct DeviceCli {
     #[arg(long, global = true)]
     json: bool,
@@ -299,8 +299,7 @@ async fn run_cli(cli: Cli) -> Result<()> {
             .ok_or_else(|| problem("Choose a device."))?
             .clone();
         let d = DeviceCli::try_parse_from(
-            std::iter::once("ac-control <DEVICE>".to_owned())
-                .chain(arguments.iter().skip(1).cloned()),
+            std::iter::once("ac-man <DEVICE>".to_owned()).chain(arguments.iter().skip(1).cloned()),
         )
         .unwrap_or_else(|e| e.exit());
         if let Some(path) = d.data_dir {
@@ -318,8 +317,7 @@ async fn run_cli(cli: Cli) -> Result<()> {
         }
         // Reparse only local/status commands, preserving clap's own validation/help.
         let d = DeviceCli::parse_from(
-            std::iter::once("ac-control <DEVICE>".to_owned())
-                .chain(arguments.iter().skip(1).cloned()),
+            std::iter::once("ac-man <DEVICE>".to_owned()).chain(arguments.iter().skip(1).cloned()),
         );
         return match d.command {
             DeviceCommand::Status => print_device(&controller.device_status(selector).await?, json),
@@ -402,14 +400,14 @@ mod tests {
     #[test]
     fn device_first_syntax_and_named_rooms() {
         for args in [
-            ["ac-control", "3", "fan", "37"],
-            ["ac-control", "Bedroom", "boost", "on"],
+            ["ac-man", "3", "fan", "37"],
+            ["ac-man", "Bedroom", "boost", "on"],
         ] {
             let cli = Cli::try_parse_from(args).unwrap();
             assert!(matches!(cli.command, Top::Device(_)));
         }
         let d = DeviceCli::try_parse_from([
-            "ac-control <DEVICE>",
+            "ac-man <DEVICE>",
             "set",
             "--fan",
             "auto",
@@ -430,7 +428,7 @@ mod tests {
     fn login_never_accepts_password_argument() {
         assert!(
             Cli::try_parse_from([
-                "ac-control",
+                "ac-man",
                 "login",
                 "user@example.test",
                 "--password",
@@ -438,15 +436,10 @@ mod tests {
             ])
             .is_err()
         );
-        assert!(Cli::try_parse_from(["ac-control", "login"]).is_ok());
+        assert!(Cli::try_parse_from(["ac-man", "login"]).is_ok());
         assert!(
-            Cli::try_parse_from([
-                "ac-control",
-                "login",
-                "user@example.test",
-                "--password-stdin"
-            ])
-            .is_ok()
+            Cli::try_parse_from(["ac-man", "login", "user@example.test", "--password-stdin"])
+                .is_ok()
         );
     }
     #[test]
@@ -456,7 +449,7 @@ mod tests {
         }
         assert_eq!(fan_value("37%").unwrap(), 37);
         assert_eq!(fan_value("AUTO").unwrap(), 102);
-        let d = DeviceCli::try_parse_from(["ac-control <DEVICE>", "set"]).unwrap();
+        let d = DeviceCli::try_parse_from(["ac-man <DEVICE>", "set"]).unwrap();
         assert!(change(d.command).is_err());
     }
     #[test]

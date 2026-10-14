@@ -1,6 +1,6 @@
 [package]
-name = "ac_control"
-crate = "ac-control"
+name = "ac_man"
+crate = "ac-man"
 
 [targets.apple]
 output = "generated/apple"
@@ -10,4 +10,4 @@ include_macos = true
 macos_architectures = ["arm64"]
 
 [targets.apple.swift]
-module_name = "AcControl"
+module_name = "AcManCore"

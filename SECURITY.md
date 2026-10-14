@@ -4,13 +4,13 @@
 
 Security fixes target the current Rust implementation and its Swift and CLI interfaces.
 
-Report suspected vulnerabilities privately to the project owner. No public reporting address or hosted repository has been configured yet; do not include passwords, session tokens, Keychain exports, or household device details in a public issue. A useful report includes the affected revision, platform, reproduction steps using synthetic data, and expected versus actual behavior.
+Report suspected vulnerabilities privately to the owner of [bootstrap314/ac-man](https://github.com/bootstrap314/ac-man). Use GitHub's private vulnerability reporting when enabled; do not include passwords, session tokens, Keychain exports, or household device details in a public issue. A useful report includes the affected revision, platform, reproduction steps using synthetic data, and expected versus actual behavior.
 
-When publishing the repository, enable GitHub private vulnerability reporting and update this section with the reporting link. Require the PR test and security checks through branch protection. Those repository settings are separate from the workflow files.
+Enable GitHub private vulnerability reporting in the repository settings. Require the PR test and security checks through branch protection. Those repository settings are separate from the workflow files.
 
 ## Accounts and local data
 
-- Run `ac-control login` and enter the password at its hidden terminal prompt. There is no password command-line flag. Do not put passwords in shell history, environment variables, Docker build arguments, examples, or CI secrets for this project.
+- Run `ac-man login` and enter the password at its hidden terminal prompt. There is no password command-line flag. Do not put passwords in shell history, environment variables, Docker build arguments, examples, or CI secrets for this project.
 - Saved credentials and cloud sessions use macOS Keychain or the Linux user's unlocked Secret Service keyring. There is no plaintext credential-file fallback. Linux credential storage needs a running user-session D-Bus and Secret Service implementation; a minimal Docker container normally has neither.
 - An in-memory sign-in lasts only for the process that owns it. Saving a login lets later CLI invocations reuse the OS credential store. Removing the saved login does not necessarily revoke a session on Midea's servers; use SmartHome's account settings when account access must be revoked.
 - The user's application-data directory holds the discovered device inventory, labels, assigned integer IDs, a stable client identifier, and status information. New data files use owner-only permissions on Unix. This data is not a password store, but room names, device IDs, MAC addresses, and status can reveal household details. Keep the directory on a private local filesystem and exclude it from shared archives. Source and release bundles must not contain a developer's household inventory or private paths.

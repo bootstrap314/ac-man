@@ -36,7 +36,7 @@ copy_notices() {
   mkdir -p "$destination/licenses"
   cp licenses/DEPENDENCIES.html "$destination/licenses/"
   # Keep the README's relative screenshot and signing-guide links functional.
-  for document in docs/macos-release.md docs/images/ac-controls.png; do
+  for document in docs/macos-release.md docs/images/ac-man-controls.jpg; do
     test -s "$document"
     mkdir -p "$destination/$(dirname -- "$document")"
     cp "$document" "$destination/$document"
@@ -45,25 +45,25 @@ copy_notices() {
 
 case "$kind" in
   cli)
-    binary="target/$target/release/ac-control"
+    binary="target/$target/release/ac-man"
     test -f "$binary"
     test -x "$binary"
     test ! -L "$binary"
-    name="ac-control-$tag-$target"
+    name="ac-man-$tag-$target"
     mkdir "$staging/$name"
-    cp "$binary" "$staging/$name/ac-control"
-    chmod 755 "$staging/$name/ac-control"
+    cp "$binary" "$staging/$name/ac-man"
+    chmod 755 "$staging/$name/ac-man"
     copy_notices "$staging/$name"
     COPYFILE_DISABLE=1 tar -czf "release-assets/$name.tar.gz" -C "$staging" "$name"
     ;;
   app)
     [[ "$target" == aarch64-apple-darwin && $(uname -s) == Darwin ]]
-    test -d 'dist/Midea Control.app'
-    test ! -L 'dist/Midea Control.app'
+    test -d 'dist/ac-man.app'
+    test ! -L 'dist/ac-man.app'
     # Build.sh creates this clean bundle from explicit inputs, without account data.
-    cp -R 'dist/Midea Control.app' "$staging/"
+    cp -R 'dist/ac-man.app' "$staging/"
     copy_notices "$staging"
-    ditto -c -k "$staging" "release-assets/Midea-Control-$tag-$target.zip"
+    ditto -c -k "$staging" "release-assets/ac-man-macos-$tag-$target.zip"
     ;;
   *) echo 'Usage: scripts/package-release.sh cli|app TAG TARGET' >&2; exit 2 ;;
 esac

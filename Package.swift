@@ -2,13 +2,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "MideaControl",
+    name: "AcMan",
     platforms: [.macOS(.v13)],
     dependencies: [.package(path: "generated/apple")],
     targets: [
         .executableTarget(
-            name: "MideaControl",
-            dependencies: [.product(name: "AcControl", package: "apple")],
+            name: "AcMan",
+            dependencies: [.product(name: "AcManCore", package: "apple")],
             path: "native",
             linkerSettings: [.linkedFramework("Cocoa"), .linkedFramework("Security")]
         )

@@ -2,14 +2,14 @@
 
 The **Release selected tag** workflow builds a standalone app, signs it with your Developer ID Application certificate, submits it to Apple's notary service, staples the accepted ticket to the app, and publishes a fresh ZIP. A failed or incomplete signing/notarization step prevents the entire release from publishing. There is no unsigned-release fallback.
 
-The app currently supports **Apple Silicon Macs with macOS 13 or later**. Recipients download the `Midea-Control-<tag>-aarch64-apple-darwin.zip` asset, unzip it, drag **Midea Control.app** to Applications, and open it. They sign in with their own SmartHome account and need no Rust, Swift, or Python installation. Intel macOS currently has a CLI release only.
+The app currently supports **Apple Silicon Macs with macOS 13 or later**. Recipients download the `ac-man-macos-<tag>-aarch64-apple-darwin.zip` asset, unzip it, drag **ac-man.app** to Applications, and open it. They sign in with their own SmartHome account and need no Rust, Swift, or Python installation. Intel macOS currently has a CLI release only.
 
 ## One-time Apple setup
 
 You need an Apple Developer Program membership, a **Developer ID Application** signing identity with its private key, and a **team App Store Connect API key** for notarization. The certificate identifies the app's publisher; the API key authorizes submission to Apple's notary service. [Apple's Developer ID guide](https://developer.apple.com/developer-id/) explains certificate creation and distribution.
 
 1. Create or locate your Developer ID Application certificate in Xcode or the Apple Developer portal. In Keychain Access, find it under **My Certificates**, expand it to confirm its private key is present, and export that identity as a password-protected `.p12`. A `.cer` file alone is insufficient. Export only the one signing identity. See [Apple's signing-identity guidance](https://developer.apple.com/documentation/xcode/sharing-your-teams-signing-certificates).
-2. In App Store Connect, create a **team API key** with appropriate access for notarization. Record its **Key ID** and **Issuer ID**, then download its `.p8` private key and keep it securely. This workflow explicitly uses team-key authentication with an issuer ID. See [Apple's API-key guide](https://developer.apple.com/documentation/appstoreconnectapi/creating-api-keys-for-app-store-connect-api).
+2. In App Store Connect, create a **team API key** and select **Developer** under Access; this role permits notarization. You can name it `ac-man releases`. Record its **Key ID** and **Issuer ID**, then download its `.p8` private key and keep it securely; Apple allows only one download. This workflow explicitly uses team-key authentication with an issuer ID. See [Apple's role permissions](https://developer.apple.com/help/account/access/roles/) and [API-key guide](https://developer.apple.com/documentation/appstoreconnectapi/creating-api-keys-for-app-store-connect-api).
 3. Keep the `.p12`, its password, and the `.p8` outside this repository. They belong in GitHub environment secrets, never commits, issues, or chat messages.
 
 ## Configure GitHub

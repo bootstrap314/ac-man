@@ -1,17 +1,18 @@
 [package]
-name = "ac-control"
+name = "ac-man"
 version = "2.0.0"
 edition = "2024"
 publish = false
 description = "Midea SmartHome cloud controller for macOS and the command line"
 license = "Apache-2.0"
+repository = "https://github.com/bootstrap314/ac-man"
 
 [lib]
-name = "ac_control"
+name = "ac_man"
 crate-type = ["rlib", "staticlib", "cdylib"]
 
 [[bin]]
-name = "ac-control"
+name = "ac-man"
 path = "src/main.rs"
 
 [dependencies]
