@@ -33,6 +33,14 @@ jobs:
       tag: ${{ steps.tag.outputs.tag }}
       commit: ${{ steps.tag.outputs.commit }}
     steps:
+      - name: Require the trusted default-branch workflow
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]]; then
+            echo 'Run this workflow from the default branch; use the tag input to select the release source.' >&2
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -108,7 +116,7 @@ jobs:
           retention-days: 7
 
   app:
-    name: Package macOS Apple Silicon application
+    name: Build macOS Apple Silicon application
     needs: [resolve, checks]
     runs-on: macos-15
     timeout-minutes: 30
@@ -132,14 +140,138 @@ jobs:
           ./scripts/package-release.sh app "$RELEASE_TAG" aarch64-apple-darwin
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: app-aarch64-apple-darwin
+          name: unsigned-app-aarch64-apple-darwin
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 1
+
+  sign-app:
+    name: Sign and notarize macOS application
+    needs: [resolve, app]
+    runs-on: macos-15
+    timeout-minutes: 30
+    environment: macos-release
+    permissions:
+      contents: read
+      actions: read
+    # This fresh runner never checks out, builds, or executes the selected tag's
+    # code. Only this job receives Apple credentials, through environment secrets.
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unsigned-app-aarch64-apple-darwin
+          path: incoming
+      - name: Validate and unpack the application archive
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          archive="$GITHUB_WORKSPACE/incoming/Midea-Control-$RELEASE_TAG-aarch64-apple-darwin.zip"
+          # Reject archive traversal, links, special files, and oversized inputs
+          # before extracting. Treat build artifacts as data, never shell code.
+          python3 - "$archive" <<'PY'
+          import pathlib, stat, sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as archive:
+              entries = archive.infolist()
+              if len(entries) > 2000 or sum(e.file_size for e in entries) > 200 * 1024 * 1024:
+                  raise SystemExit("Application archive exceeds release limits")
+              names = set()
+              for entry in entries:
+                  path = pathlib.PurePosixPath(entry.filename)
+                  mode = stat.S_IFMT(entry.external_attr >> 16)
+                  name = entry.filename.rstrip('/').casefold()
+                  if (path.is_absolute() or '..' in path.parts or '\\' in entry.filename
+                          or name in names or mode not in (0, stat.S_IFREG, stat.S_IFDIR)):
+                      raise SystemExit("Unsafe application archive entry")
+                  names.add(name)
+          PY
+          mkdir -p signed-dist release-assets
+          ditto -x -k "$archive" signed-dist
+          test -f 'signed-dist/Midea Control.app/Contents/Info.plist'
+          test -x 'signed-dist/Midea Control.app/Contents/MacOS/MideaControl'
+      - name: Sign with Developer ID, notarize, and staple the ticket
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+          APPLE_API_KEY_ID: ${{ vars.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ vars.APPLE_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          for name in MACOS_CERTIFICATE_P12 MACOS_CERTIFICATE_PASSWORD APPLE_API_PRIVATE_KEY APPLE_API_KEY_ID APPLE_API_ISSUER_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing $name in the macos-release environment. See docs/macos-release.md."
+              exit 1
+            fi
+          done
+          signing_dir=$(mktemp -d "$RUNNER_TEMP/midea-signing.XXXXXX")
+          keychain="$signing_dir/signing.keychain-db"
+          cleanup() {
+            security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            rm -rf -- "$signing_dir"
+          }
+          trap cleanup EXIT
+          keychain_password=$(openssl rand -hex 32)
+          printf '::add-mask::%s\n' "$keychain_password"
+          python3 - "$signing_dir/certificate.p12" <<'PY'
+          import base64, os, pathlib, sys
+          encoded = ''.join(os.environ['MACOS_CERTIFICATE_P12'].split())
+          pathlib.Path(sys.argv[1]).write_bytes(base64.b64decode(encoded, validate=True))
+          PY
+          printf '%s' "$APPLE_API_PRIVATE_KEY" > "$signing_dir/AuthKey.p8"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$signing_dir/certificate.p12" -k "$keychain" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security >/dev/null
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$keychain_password" "$keychain" >/dev/null
+          security find-identity -v -p codesigning "$keychain" > "$signing_dir/identities.txt"
+          identity=$(python3 - "$signing_dir/identities.txt" <<'PY'
+          import pathlib, re, sys
+          identities = re.findall(r'\b([A-Fa-f0-9]{40}) "Developer ID Application: [^"]+"',
+                                  pathlib.Path(sys.argv[1]).read_text())
+          if len(identities) != 1:
+              raise SystemExit("The P12 must contain exactly one valid Developer ID Application identity and its private key")
+          print(identities[0])
+          PY
+          )
+          app="$GITHUB_WORKSPACE/signed-dist/Midea Control.app"
+          # The app has one executable with the Rust library linked statically;
+          # there are no nested helpers or frameworks needing separate signing.
+          codesign --force --timestamp --options runtime --keychain "$keychain" \
+            --sign "$identity" "$app"
+          codesign --verify --deep --strict "$app"
+          ditto -c -k --keepParent "$app" "$signing_dir/submission.zip"
+          xcrun notarytool submit "$signing_dir/submission.zip" \
+            --key "$signing_dir/AuthKey.p8" --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER_ID" --wait --timeout 20m \
+            --output-format json > "$signing_dir/notarization.json"
+          python3 - "$signing_dir/notarization.json" <<'PY'
+          import json, pathlib, sys
+          result = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          if result.get('status') != 'Accepted':
+              raise SystemExit("Apple did not accept notarization; nothing will be published. Submission: "
+                               + str(result.get('id', 'unknown')))
+          print("Apple accepted notarization. Submission: " + str(result['id']))
+          PY
+          xcrun stapler staple "$app"
+          xcrun stapler validate "$app"
+          codesign --verify --deep --strict "$app"
+          spctl --assess --type execute --verbose=2 "$app"
+          # Recreate the ZIP after stapling; the upload ZIP has no stapled ticket.
+          ditto -c -k signed-dist "release-assets/Midea-Control-$RELEASE_TAG-aarch64-apple-darwin.zip"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-app-aarch64-apple-darwin
           path: release-assets/*
           if-no-files-found: error
           retention-days: 7
 
   publish:
     name: Publish checked archives
-    needs: [resolve, cli, app]
+    needs: [resolve, cli, sign-app]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     # Only this job can write a release. It never checks out or executes project code.
@@ -149,8 +281,13 @@ jobs:
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
+          pattern: cli-*
           path: release-assets
           merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-app-aarch64-apple-darwin
+          path: release-assets
       - name: Verify archives and record their source
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
@@ -172,6 +309,7 @@ jobs:
           sha256sum --check --strict SHA256SUMS
           printf 'tag=%s\ncommit=%s\nrun=%s/%s/actions/runs/%s\n' \
             "$RELEASE_TAG" "$RELEASE_COMMIT" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > SOURCE.txt
+          printf 'macos_app=Developer ID signed, notarized, and stapled\n' >> SOURCE.txt
       - name: Ensure tag has not moved and create release
         env:
           GH_TOKEN: ${{ github.token }}

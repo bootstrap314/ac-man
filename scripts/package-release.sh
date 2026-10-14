@@ -35,6 +35,12 @@ copy_notices() {
   done
   mkdir -p "$destination/licenses"
   cp licenses/DEPENDENCIES.html "$destination/licenses/"
+  # Keep the README's relative screenshot and signing-guide links functional.
+  for document in docs/macos-release.md docs/images/ac-controls.png; do
+    test -s "$document"
+    mkdir -p "$destination/$(dirname -- "$document")"
+    cp "$document" "$destination/$document"
+  done
 }
 
 case "$kind" in

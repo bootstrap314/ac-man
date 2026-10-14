@@ -8,6 +8,10 @@ This is an unofficial community client. Model capabilities and SmartHome service
 
 ## Menu-bar application
 
+<img src="docs/images/ac-controls.png" alt="AC control window showing temperature, mode, fan percentage, Auto, Boost, and swing" width="430">
+
+The control window opened by selecting a room in the menu bar. The screenshot uses an example room label.
+
 Open **Midea Control.app**, then click its air-conditioner icon in the menu bar. Sign in and choose a discovered AC to see its status and controls:
 
 - Power, target temperature in Celsius, operating mode, and swing.
@@ -17,7 +21,7 @@ Open **Midea Control.app**, then click its air-conditioner icon in the menu bar.
 
 Supported controls come from the unit's capabilities. Units with custom fan control accept whole percentages from 1–100; units with fixed speeds accept only the percentages they report. Disable Boost before choosing a manual fan speed. Commands are followed by a status read to confirm the result.
 
-The Swift interface awaits Rust operations asynchronously. Network requests do not run on the UI thread. The current app build targets Apple Silicon Macs running macOS 13 or later; CLI release packages also support Intel Macs and Linux x86_64. Release app bundles are ad hoc signed, without Developer ID signing or notarization.
+The Swift interface awaits Rust operations asynchronously. Network requests do not run on the UI thread. The current app build targets Apple Silicon Macs running macOS 13 or later; CLI release packages also support Intel Macs and Linux x86_64. Local builds are ad hoc signed. The release workflow signs the app with Developer ID, notarizes it with Apple, and staples the ticket before publishing.
 
 ## Command-line use
 
@@ -176,13 +180,13 @@ The runtime does not start a desktop keyring or D-Bus service, so it is mainly u
 
 **Tests and security** runs on pull requests and can also be started manually. It checks Rust formatting, Clippy, tests, CLI builds on Linux x86_64 and macOS arm64/Intel, the Apple Silicon Swift app build, Cargo Audit, Trivy source scans, and the built runtime image. The workflow also serves as the release verification gate.
 
-**Release selected tag** runs only through `workflow_dispatch`; pushing a tag does not publish a release. To release:
+**Release selected tag** runs only through `workflow_dispatch`; pushing a tag does not publish a release. First follow the [macOS signing setup](docs/macos-release.md) to configure the `macos-release` GitHub environment with your Apple certificate and notarization credentials. The workflow refuses to publish if signing or notarization fails. To release:
 
 1. Commit the intended source and lockfile, create a tag such as `v2.0.0`, and push that tag to GitHub.
 2. Open **Actions → Release selected tag → Run workflow** and supply the existing tag in the `tag` field. Use letters, digits, dots, underscores, or hyphens; start with a letter or digit.
-3. The workflow resolves that tag to a commit, runs the tests and security gates on that commit, then builds the release artifacts. Publishing fails if the tag moves during the run.
+3. The workflow resolves that tag to a commit, runs the tests and security gates on that commit, then builds the release artifacts. A separate macOS job signs and notarizes the app, attaches Apple's ticket, and verifies it with Gatekeeper. Publishing fails if any of those steps fail or the tag moves during the run.
 
-The release contains CLI archives for macOS arm64, macOS Intel, and Linux x86_64, plus an Apple Silicon app archive, `SHA256SUMS`, and `SOURCE.txt` with the tag, commit, and workflow-run link. Existing releases are not overwritten. Downloads include generated dependency notices; account data is never a packaging input.
+The release contains CLI archives for macOS arm64, macOS Intel, and Linux x86_64, plus the signed and notarized Apple Silicon app ZIP, `SHA256SUMS`, and `SOURCE.txt` with the tag, commit, and workflow-run link. Recipients unzip the app, move it to Applications, and sign in to their own SmartHome account; they do not need Rust or Swift installed. The separate CLI archives do not go through the app-signing job. Existing releases are not overwritten. Downloads include generated dependency notices; account data is never a packaging input.
 
 All workflow actions use immutable commit pins, and checkout credentials are not retained. Only the final publishing job has release-write permission. Configure branch protection and tag protection in the GitHub repository; workflow files do not enable those repository settings.
 
