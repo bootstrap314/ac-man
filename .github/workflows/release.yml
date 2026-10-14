@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to release (for example v2.0.0; letters, digits, dots, underscores, and hyphens)
+        description: Existing tag to release (for example v0.0.1; letters, digits, dots, underscores, and hyphens)
         required: true
         type: string
 
@@ -338,4 +338,4 @@ jobs:
             "ac-man-macos-$RELEASE_TAG-aarch64-apple-darwin.zip" \
             SHA256SUMS SOURCE.txt \
             --repo "$GITHUB_REPOSITORY" --verify-tag --target "$RELEASE_COMMIT" \
-            --title "$RELEASE_TAG" --generate-notes
+            --title "$RELEASE_TAG" --notes-from-tag
