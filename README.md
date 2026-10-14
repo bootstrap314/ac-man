@@ -184,7 +184,7 @@ The runtime does not start a desktop keyring or D-Bus service, so it is mainly u
 
 1. Commit the intended source and lockfile, create a signed annotated tag such as `v0.0.1` with the feature notes in its message, and push that tag to GitHub.
 2. Open **Actions → Release selected tag → Run workflow** and supply the existing tag in the `tag` field. Use letters, digits, dots, underscores, or hyphens; start with a letter or digit.
-3. The workflow resolves that tag to a commit, runs the tests and security gates on that commit, then builds the release artifacts. A separate macOS job signs and notarizes the app, attaches Apple's ticket, and verifies it with Gatekeeper. Publishing fails if any of those steps fail or the tag moves during the run.
+3. The workflow resolves that tag to a commit and runs the tests and security gates on it. The macOS verification job builds the app once and saves its unsigned archive. A separate macOS job consumes that same archive, signs and notarizes the app, attaches Apple's ticket, and verifies it with Gatekeeper. Publishing fails if any of those steps fail or the tag moves during the run.
 
 The release notes come from the signed tag annotation. The release contains CLI archives for macOS arm64, macOS Intel, and Linux x86_64, plus the signed and notarized Apple Silicon app ZIP, `SHA256SUMS`, and `SOURCE.txt` with the tag, commit, and workflow-run link. Recipients unzip the app, move it to Applications, and sign in to their own SmartHome account; they do not need Rust or Swift installed. The separate CLI archives do not go through the app-signing job. Existing releases are not overwritten. Downloads include generated dependency notices; account data is never a packaging input.
 

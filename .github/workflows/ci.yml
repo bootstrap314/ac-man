@@ -9,6 +9,11 @@ on:
         description: Exact commit to check when called by the release workflow
         type: string
         required: true
+      release_tag:
+        description: Release archive label; standalone CI uses its commit SHA
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -63,6 +68,21 @@ jobs:
       - name: Build Swift menu-bar application
         if: matrix.runner == 'macos-15'
         run: ./build.sh
+      - name: Package the verified macOS application
+        if: matrix.runner == 'macos-15'
+        env:
+          PACKAGE_TAG: ${{ inputs.release_tag || github.sha }}
+        run: |
+          codesign --verify --deep --strict 'dist/ac-man.app'
+          ./scripts/package-release.sh app "$PACKAGE_TAG" aarch64-apple-darwin
+      - name: Preserve the unsigned app for the signing job
+        if: matrix.runner == 'macos-15'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-app-aarch64-apple-darwin
+          path: release-assets/ac-man-macos-${{ inputs.release_tag || github.sha }}-aarch64-apple-darwin.zip
+          if-no-files-found: error
+          retention-days: 1
 
   security:
     name: Dependency, source, and container scans
