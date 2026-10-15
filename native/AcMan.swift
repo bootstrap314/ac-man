@@ -334,10 +334,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         nameRow.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
         roomStatus.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
         full(header, in: contents)
+        contents.setCustomSpacing(20, after: header)
         let targetCaption = NSTextField(labelWithString: "TARGET TEMPERATURE")
         targetCaption.font = .systemFont(ofSize: 10, weight: .semibold)
         targetCaption.textColor = .secondaryLabelColor
         targetCaption.alignment = .center; full(targetCaption, in: contents)
+        contents.setCustomSpacing(4, after: targetCaption)
         targetReading.font = .monospacedDigitSystemFont(ofSize: 52, weight: .light)
         targetReading.alignment = .center
         targetReading.widthAnchor.constraint(equalToConstant: 150).isActive = true
