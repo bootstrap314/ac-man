@@ -59,7 +59,6 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var deviceWindow: NSWindow?
     private var deviceContents: NSStackView?
     private let heading = NSTextField(labelWithString: "Air conditioner")
-    private let identity = NSTextField(labelWithString: "")
     private let roomStatus = NSTextField(labelWithString: "Waiting for status")
     private let power = PowerButton(frame: .zero)
     private let targetReading = NSTextField(labelWithString: "—°")
@@ -314,20 +313,15 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rename.toolTip = "Rename air conditioner"; rename.setAccessibilityLabel("Rename air conditioner")
         rename.widthAnchor.constraint(equalToConstant: 24).isActive = true
         rename.heightAnchor.constraint(equalToConstant: 24).isActive = true
-        let header = NSStackView(views: [rename, heading, power])
-        header.orientation = .vertical; header.alignment = .centerX; header.spacing = 8
-        heading.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
-        full(header, in: contents)
-        identity.font = .systemFont(ofSize: 11); identity.textColor = .secondaryLabelColor
-        identity.lineBreakMode = .byTruncatingMiddle
-        identity.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        identity.alignment = .center
-        full(identity, in: contents)
-        roomStatus.font = .systemFont(ofSize: 15, weight: .semibold)
-        roomStatus.setContentHuggingPriority(.defaultLow, for: .horizontal)
         roomStatus.font = .systemFont(ofSize: 12)
         roomStatus.textColor = .secondaryLabelColor
-        full(roomStatus, in: contents)
+        roomStatus.alignment = .center
+        roomStatus.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let header = NSStackView(views: [rename, heading, roomStatus, power])
+        header.orientation = .vertical; header.alignment = .centerX; header.spacing = 8
+        heading.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
+        roomStatus.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
+        full(header, in: contents)
         let targetCaption = NSTextField(labelWithString: "TARGET TEMPERATURE")
         targetCaption.font = .systemFont(ofSize: 10, weight: .semibold)
         targetCaption.textColor = .secondaryLabelColor
@@ -392,7 +386,6 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateDevice() {
         guard let win = deviceWindow, let d = selected else { return }
         win.title = d.label; heading.stringValue = d.label
-        identity.stringValue = "Device \(d.localId)"
         let change = pending[d.id]
         let enabled = snapshot.signedIn && d.online && !authenticating
         rename.isEnabled = !authenticating
@@ -411,7 +404,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let powerOn = change?.power ?? d.power
             let boostOn = change?.boost ?? d.boost
             let speed = change?.fan ?? d.fan
-            roomStatus.stringValue = "\(powerOn ? "On" : "Off") · Room \(number(d.indoor))°C"
+            roomStatus.stringValue = "Room \(number(d.indoor))°C"
             power.setPowerState(powerOn)
             updatePicker(mode, choices: d.modes, value: change?.mode ?? d.mode)
             if modeChoices != d.modes {
