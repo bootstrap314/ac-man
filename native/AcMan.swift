@@ -196,14 +196,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return result
     }
 
-    private func stack(in window: NSWindow, padding: CGFloat = 24, spacing: CGFloat = 14) -> NSStackView {
+    private func stack(in window: NSWindow, padding: CGFloat = 24, spacing: CGFloat = 14, topPadding: CGFloat? = nil) -> NSStackView {
         let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = spacing
         stack.translatesAutoresizingMaskIntoConstraints = false
         let content = (window.contentView as? ClimateBackgroundView)?.contentContainer ?? window.contentView!; content.addSubview(stack)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: padding),
             stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -padding),
-            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: padding)
+            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: topPadding ?? padding)
         ])
         return stack
     }
@@ -288,11 +288,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func buildDeviceWindow() {
         let win = window("Air conditioner", width: 380, height: 380); deviceWindow = win
         win.isOpaque = false; win.backgroundColor = .clear
+        win.styleMask.insert(.fullSizeContentView)
+        win.titleVisibility = .hidden
         win.titlebarAppearsTransparent = true
         win.isMovable = true
         win.isMovableByWindowBackground = true
         win.contentView = ClimateBackgroundView()
-        let contents = stack(in: win, padding: 20, spacing: 12); deviceContents = contents
+        let contents = stack(in: win, padding: 20, spacing: 12, topPadding: 44); deviceContents = contents
         heading.font = .systemFont(ofSize: 20, weight: .semibold)
         heading.lineBreakMode = .byTruncatingTail
         heading.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -435,7 +437,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let win = deviceWindow, let contents = deviceContents else { return }
         // Fit the actual rows without animating or moving the title bar during refreshes.
         win.contentView?.layoutSubtreeIfNeeded()
-        let height = ceil(contents.fittingSize.height) + 40
+        let height = ceil(contents.fittingSize.height) + 64
         guard abs((win.contentView?.bounds.height ?? 0) - height) > 1 else { return }
         let top = win.frame.maxY
         win.setContentSize(NSSize(width: 380, height: height))
