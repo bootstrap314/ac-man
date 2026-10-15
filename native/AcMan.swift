@@ -4,6 +4,22 @@ import AcManCore
 // The generated async API runs the cloud work on Rust's Tokio runtime.
 // AppKit views remain on the main actor and are created only once.
 @MainActor
+final class ControlWindow: NSWindow {
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown {
+            let point = event.locationInWindow
+            // The native title bar is outside the content layout rectangle.
+            // Leave the traffic-light controls to AppKit.
+            if point.y >= contentLayoutRect.maxY && point.x >= 80 {
+                performDrag(with: event)
+                return
+            }
+        }
+        super.sendEvent(event)
+    }
+}
+
+@MainActor
 final class FanSlider: NSSlider {
     private(set) var isDragging = false
     var onCommit: (() -> Void)?
@@ -175,7 +191,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func window(_ title: String, width: CGFloat, height: CGFloat) -> NSWindow {
-        let result = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let result = ControlWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height), styleMask: [.titled, .closable], backing: .buffered, defer: false)
         result.title = title; result.isReleasedWhenClosed = false; result.center()
         return result
     }
