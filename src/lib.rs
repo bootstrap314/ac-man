@@ -48,6 +48,10 @@ pub struct DeviceSnapshot {
     pub mode: i32,
     pub fan: i32,
     pub swing: i32,
+    pub vertical_angle: Option<i32>,
+    pub horizontal_angle: Option<i32>,
+    pub vertical_angles: Vec<Choice>,
+    pub horizontal_angles: Vec<Choice>,
     pub boost: bool,
     pub custom_fan: bool,
     pub supports_boost: bool,
@@ -75,6 +79,8 @@ pub struct SettingsChange {
     pub fan: Option<i32>,
     pub swing: Option<i32>,
     pub boost: Option<bool>,
+    pub vertical_angle: Option<i32>,
+    pub horizontal_angle: Option<i32>,
 }
 
 pub(crate) fn choices(values: &[i32], names: &[(i32, &str)]) -> Vec<Choice> {
@@ -111,4 +117,14 @@ pub const SWING_NAMES: &[(i32, &str)] = &[
     (3, "Horizontal"),
     (12, "Vertical"),
     (15, "Both"),
+];
+
+/// Indexed vent positions; these wire values are not physical degrees.
+pub const ANGLE_NAMES: &[(i32, &str)] = &[
+    (0, "Off"),
+    (1, "Position 1"),
+    (25, "Position 2"),
+    (50, "Position 3"),
+    (75, "Position 4"),
+    (100, "Position 5"),
 ];

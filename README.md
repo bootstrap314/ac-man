@@ -15,6 +15,7 @@ The control window opened by selecting a room in the menu bar. The screenshot us
 Open **ac-man.app**, then click its air-conditioner icon in the menu bar. Sign in and choose a discovered AC to see its status and controls:
 
 - Power, target temperature in Celsius, operating mode, and swing.
+- Vertical and horizontal vent positions on units that advertise support.
 - Fan speed as a percentage slider, with an **Auto** option.
 - **Boost** for the unit's turbo setting.
 - A local room label, shared with the CLI.
@@ -55,6 +56,8 @@ ac-man 1 fan auto
 ac-man 1 boost on
 ac-man 1 boost off
 ac-man 1 swing vertical
+ac-man 1 vertical-angle 2
+ac-man 1 horizontal-angle 3
 ac-man 1 set --power on --temperature 23 --mode cool --fan auto --boost off
 ac-man 1 off
 
@@ -73,8 +76,9 @@ Labels match without regard to case; quote labels containing spaces. A label or 
 | `mode` | `auto`, `cool`, `dry`, `heat`, `fan`, `smart-dry` |
 | `fan` | Whole percentage `1`–`100`, or `auto` |
 | `swing` | `off`, `horizontal`, `vertical`, `both` |
+| `vertical-angle`, `horizontal-angle` | `off`, or position `1`–`5` on supported units (not degrees) |
 | `boost` | `on`, `off` |
-| `set` | Combine `--power`, `--temperature`, `--mode`, `--fan`, `--swing`, `--boost` |
+| `set` | Combine `--power`, `--temperature`, `--mode`, `--fan`, `--swing`, `--boost`, `--vertical-angle`, `--horizontal-angle` |
 | `rename` | New local label, up to 60 characters |
 | `id` | New unique positive integer |
 
@@ -186,7 +190,7 @@ The runtime does not start a desktop keyring or D-Bus service, so it is mainly u
 2. Open **Actions → Release selected tag → Run workflow** and supply the existing tag in the `tag` field. Use letters, digits, dots, underscores, or hyphens; start with a letter or digit.
 3. The workflow resolves that tag to a commit and runs the tests and security gates on it. The macOS verification job builds the app once and saves its unsigned archive. A separate macOS job consumes that same archive, signs and notarizes the app, attaches Apple's ticket, and verifies it with Gatekeeper. Publishing fails if any of those steps fail or the tag moves during the run.
 
-The release notes come from the signed tag annotation. The release contains CLI archives for macOS arm64, macOS Intel, and Linux x86_64, plus the signed and notarized Apple Silicon app ZIP, `SHA256SUMS`, and `SOURCE.txt` with the tag, commit, and workflow-run link. Recipients unzip the app, move it to Applications, and sign in to their own SmartHome account; they do not need Rust or Swift installed. The separate CLI archives do not go through the app-signing job. Existing releases are not overwritten. Downloads include generated dependency notices; account data is never a packaging input.
+The release notes come from the signed tag annotation. The release contains CLI archives for macOS arm64, macOS Intel, and Linux x86_64, plus the signed and notarized Apple Silicon app installer (`ac-man-app-<tag>-macos-apple-silicon.dmg`), `SHA256SUMS`, and `SOURCE.txt` with the tag, commit, and workflow-run link. Recipients open the DMG, drag the app onto its Applications shortcut, and sign in to their own SmartHome account; they do not need Rust or Swift installed. The separate CLI archives do not go through the app-signing job. Existing releases are not overwritten. Downloads include generated dependency notices; account data is never a packaging input.
 
 All workflow actions use immutable commit pins, and checkout credentials are not retained. Only the final publishing job has release-write permission. Configure branch protection and tag protection in the GitHub repository; workflow files do not enable those repository settings.
 

@@ -38,6 +38,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let loginButton = NSButton(title: "Sign in", target: nil, action: nil)
 
     private var deviceWindow: NSWindow?
+    private var deviceContents: NSStackView?
     private let heading = NSTextField(labelWithString: "Air conditioner")
     private let identity = NSTextField(labelWithString: "")
     private let roomStatus = NSTextField(labelWithString: "Waiting for status")
@@ -50,6 +51,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let boost = NSButton(checkboxWithTitle: "Boost", target: nil, action: nil)
     private let fanNote = NSTextField(wrappingLabelWithString: "")
     private let swing = NSPopUpButton()
+    private let verticalAngle = NSPopUpButton()
+    private let horizontalAngle = NSPopUpButton()
+    private var verticalAngleRow: NSStackView?
+    private var horizontalAngleRow: NSStackView?
     private let footer = NSTextField(wrappingLabelWithString: "")
     private let spinner = NSProgressIndicator()
     private let retry = NSButton(title: "Refresh", target: nil, action: nil)
@@ -136,7 +141,6 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let refresh = item(refreshing ? "Refreshing…" : "Refresh status", #selector(refreshAll))
         refresh.isEnabled = snapshot.signedIn && !refreshing; menu.addItem(refresh)
         if snapshot.signedIn {
-            menu.addItem(item("SmartHome cloud", nil))
             let logout = item("Sign out & forget saved login…", #selector(signOut))
             logout.isEnabled = pending.isEmpty && !authenticating; menu.addItem(logout)
         } else {
@@ -171,14 +175,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return result
     }
 
-    private func stack(in window: NSWindow) -> NSStackView {
-        let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 14
+    private func stack(in window: NSWindow, padding: CGFloat = 24, spacing: CGFloat = 14) -> NSStackView {
+        let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = spacing
         stack.translatesAutoresizingMaskIntoConstraints = false
         let content = window.contentView!; content.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
-            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 24)
+            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: padding),
+            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -padding),
+            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: padding)
         ])
         return stack
     }
@@ -187,12 +191,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         stack.addArrangedSubview(view); view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     }
 
-    private func row(_ title: String, _ control: NSView, in stack: NSStackView) {
+    @discardableResult
+    private func row(_ title: String, _ control: NSView, in stack: NSStackView) -> NSStackView {
         let label = NSTextField(labelWithString: title)
-        label.widthAnchor.constraint(equalToConstant: 150).isActive = true
+        label.widthAnchor.constraint(equalToConstant: 120).isActive = true
         let row = NSStackView(views: [label, control]); row.orientation = .horizontal; row.spacing = 12
         control.setContentHuggingPriority(.defaultLow, for: .horizontal)
         full(row, in: stack)
+        return row
     }
 
     private func configure(_ control: NSControl, _ action: Selector) { control.target = self; control.action = action }
@@ -259,28 +265,43 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func buildDeviceWindow() {
-        let win = window("Air conditioner", width: 430, height: 680); deviceWindow = win
-        let contents = stack(in: win)
-        heading.font = .systemFont(ofSize: 22, weight: .semibold); full(heading, in: contents)
-        identity.font = .systemFont(ofSize: 11); identity.textColor = .secondaryLabelColor; full(identity, in: contents)
-        configure(rename, #selector(renameRoom)); rename.bezelStyle = .rounded; contents.addArrangedSubview(rename)
-        roomStatus.font = .systemFont(ofSize: 17, weight: .semibold); full(roomStatus, in: contents)
-        configure(power, #selector(togglePower)); power.bezelStyle = .rounded; contents.addArrangedSubview(power)
-        configure(temperature, #selector(setTemperature)); row("Target temperature", temperature, in: contents)
+        let win = window("Air conditioner", width: 380, height: 380); deviceWindow = win
+        let contents = stack(in: win, padding: 20, spacing: 10); deviceContents = contents
+        heading.font = .systemFont(ofSize: 20, weight: .semibold)
+        heading.lineBreakMode = .byTruncatingTail; full(heading, in: contents)
+        identity.font = .systemFont(ofSize: 11); identity.textColor = .secondaryLabelColor
+        identity.lineBreakMode = .byTruncatingMiddle
+        identity.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        configure(rename, #selector(renameRoom)); rename.bezelStyle = .rounded
+        rename.title = "Rename…"; rename.setAccessibilityLabel("Rename room")
+        let details = NSStackView(views: [identity, rename]); details.spacing = 8; full(details, in: contents)
+        roomStatus.font = .systemFont(ofSize: 15, weight: .semibold)
+        roomStatus.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        configure(power, #selector(togglePower)); power.bezelStyle = .rounded
+        let status = NSStackView(views: [roomStatus, power]); status.spacing = 8; full(status, in: contents)
+        configure(temperature, #selector(setTemperature)); row("Temperature", temperature, in: contents)
         configure(mode, #selector(setMode)); row("Mode", mode, in: contents)
         fanPercent.alignment = .right; fanPercent.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium)
-        row("Fan speed", fanPercent, in: contents)
+        fanPercent.widthAnchor.constraint(equalToConstant: 40).isActive = true
         configure(fan, #selector(previewFan)); fan.isContinuous = true; fan.setAccessibilityLabel("Fan speed percentage")
-        fan.onCommit = { [weak self] in self?.commitFan() }; full(fan, in: contents)
+        fan.onCommit = { [weak self] in self?.commitFan() }
+        let fanControl = NSStackView(views: [fan, fanPercent]); fanControl.spacing = 8
+        row("Fan speed", fanControl, in: contents)
         configure(autoFan, #selector(setAutoFan)); configure(boost, #selector(setBoost))
         let fanOptions = NSStackView(views: [autoFan, boost]); fanOptions.spacing = 28; contents.addArrangedSubview(fanOptions)
         fanNote.font = .systemFont(ofSize: 11); fanNote.textColor = .secondaryLabelColor
         full(fanNote, in: contents); fanNote.heightAnchor.constraint(equalToConstant: 30).isActive = true
         configure(swing, #selector(setSwing)); row("Swing", swing, in: contents)
+        configure(verticalAngle, #selector(setVerticalAngle))
+        verticalAngle.setAccessibilityLabel("Vertical vent position")
+        verticalAngleRow = row("Vertical vent", verticalAngle, in: contents)
+        configure(horizontalAngle, #selector(setHorizontalAngle))
+        horizontalAngle.setAccessibilityLabel("Horizontal vent position")
+        horizontalAngleRow = row("Horizontal vent", horizontalAngle, in: contents)
         spinner.style = .spinning; spinner.controlSize = .small; spinner.isDisplayedWhenStopped = false
         spinner.widthAnchor.constraint(equalToConstant: 16).isActive = true
         footer.font = .systemFont(ofSize: 11); footer.textColor = .secondaryLabelColor
-        footer.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        footer.heightAnchor.constraint(equalToConstant: 42).isActive = true
         configure(retry, #selector(refreshAll)); retry.bezelStyle = .rounded
         let bottom = NSStackView(views: [spinner, footer, retry]); bottom.spacing = 10; full(bottom, in: contents)
         footer.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -296,6 +317,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let enabled = snapshot.signedIn && d.online && change == nil && !authenticating
         rename.isEnabled = change == nil
         power.isEnabled = enabled; temperature.isEnabled = enabled; mode.isEnabled = enabled; swing.isEnabled = enabled
+        verticalAngleRow?.isHidden = d.verticalAngles.isEmpty
+        horizontalAngleRow?.isHidden = d.horizontalAngles.isEmpty
+        verticalAngle.isEnabled = enabled && !d.verticalAngles.isEmpty
+        horizontalAngle.isEnabled = enabled && !d.horizontalAngles.isEmpty
         retry.isEnabled = snapshot.signedIn && !refreshing
         if d.online {
             let powerOn = change?.power ?? d.power
@@ -309,6 +334,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             updatePicker(temperature, choices: temperatures, value: Int32(((change?.temperature ?? d.temperature ?? 24) * 2).rounded()))
             updatePicker(mode, choices: d.modes, value: change?.mode ?? d.mode)
             updatePicker(swing, choices: d.swings, value: change?.swing ?? d.swing)
+            updateAnglePicker(verticalAngle, choices: d.verticalAngles, value: change?.verticalAngle ?? d.verticalAngle)
+            updateAnglePicker(horizontalAngle, choices: d.horizontalAngles, value: change?.horizontalAngle ?? d.horizontalAngle)
             fanSteps = d.customFan ? Array(1...100) : d.fans.map { Int($0.value) }.filter { (1...100).contains($0) }.sorted()
             if !fan.isDragging {
                 if (1...100).contains(Int(speed)) && !boostOn { manualSpeeds[d.id] = Int(speed) }
@@ -331,9 +358,21 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         else if !snapshot.signedIn { footer.stringValue = "Sign in from the menu bar to control this AC." }
         else if refreshing { footer.stringValue = "Refreshing in the background…" }
         else if !d.error.isEmpty { footer.stringValue = d.error }
-        else if d.updated > 0 { footer.stringValue = "SmartHome cloud · Updated \(Date(timeIntervalSince1970: d.updated).formatted(date: .omitted, time: .shortened))" }
+        else if d.updated > 0 { footer.stringValue = "Updated \(Date(timeIntervalSince1970: d.updated).formatted(date: .omitted, time: .shortened))" }
         else { footer.stringValue = "Waiting for the first status update." }
         if change != nil || refreshing { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
+        fitDeviceWindow()
+    }
+
+    private func fitDeviceWindow() {
+        guard let win = deviceWindow, let contents = deviceContents else { return }
+        // Fit the actual rows without animating or moving the title bar during refreshes.
+        win.contentView?.layoutSubtreeIfNeeded()
+        let height = ceil(contents.fittingSize.height) + 40
+        guard abs((win.contentView?.bounds.height ?? 0) - height) > 1 else { return }
+        let top = win.frame.maxY
+        win.setContentSize(NSSize(width: 380, height: height))
+        win.setFrameOrigin(NSPoint(x: win.frame.minX, y: top - win.frame.height))
     }
 
     private func updatePicker(_ picker: NSPopUpButton, choices: [Choice], value: Int32) {
@@ -346,9 +385,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         picker.selectItem(withTag: Int(value))
     }
 
-    private func change(power: Bool? = nil, temperature: Double? = nil, mode: Int32? = nil, fan: Int32? = nil, swing: Int32? = nil, boost: Bool? = nil) {
+    private func updateAnglePicker(_ picker: NSPopUpButton, choices: [Choice], value: Int32?) {
+        // A supported vent may not have reported its position yet; don't imply it is off.
+        let available = value == nil ? [Choice(value: -1, name: "Unknown")] + choices : choices
+        updatePicker(picker, choices: available, value: value ?? -1)
+        picker.menu?.item(withTag: -1)?.isEnabled = false
+    }
+
+    private func change(power: Bool? = nil, temperature: Double? = nil, mode: Int32? = nil, fan: Int32? = nil, swing: Int32? = nil, boost: Bool? = nil, verticalAngle: Int32? = nil, horizontalAngle: Int32? = nil) {
         guard let core, let d = selected, snapshot.signedIn, d.online, pending[d.id] == nil else { return }
-        let change = SettingsChange(power: power, temperature: temperature, mode: mode, fan: fan, swing: swing, boost: boost)
+        let change = SettingsChange(power: power, temperature: temperature, mode: mode, fan: fan, swing: swing, boost: boost, verticalAngle: verticalAngle, horizontalAngle: horizontalAngle)
         pending[d.id] = change; operationErrors.removeValue(forKey: d.id); updateDevice()
         Task {
             do { accept(try await core.control(selector: d.id, change: change)) }
@@ -364,6 +410,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func setTemperature() { change(temperature: Double(temperature.selectedTag()) / 2) }
     @objc private func setMode() { change(mode: Int32(mode.selectedTag())) }
     @objc private func setSwing() { change(swing: Int32(swing.selectedTag())) }
+    @objc private func setVerticalAngle() { change(verticalAngle: Int32(verticalAngle.selectedTag())) }
+    @objc private func setHorizontalAngle() { change(horizontalAngle: Int32(horizontalAngle.selectedTag())) }
     @objc private func setBoost() { change(boost: boost.state == .on) }
     @objc private func setAutoFan() { change(fan: autoFan.state == .on ? 102 : Int32(fanPercentage())) }
     private func fanPercentage() -> Int {

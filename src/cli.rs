@@ -80,6 +80,10 @@ enum DeviceCommand {
         #[arg(value_enum)]
         value: Swing,
     },
+    /// Set a vertical vent position (off or 1–5; not degrees).
+    VerticalAngle { value: String },
+    /// Set a horizontal vent position (off or 1–5; not degrees).
+    HorizontalAngle { value: String },
     /// Enable or disable turbo/Boost.
     Boost {
         #[arg(value_enum)]
@@ -155,6 +159,23 @@ struct SetOptions {
     swing: Option<Swing>,
     #[arg(long, value_enum)]
     boost: Option<Toggle>,
+    #[arg(long, help = "Vertical vent position: off or 1–5 (not degrees)")]
+    vertical_angle: Option<String>,
+    #[arg(long, help = "Horizontal vent position: off or 1–5 (not degrees)")]
+    horizontal_angle: Option<String>,
+}
+fn angle_value(value: &str) -> Result<i32> {
+    match value.to_ascii_lowercase().as_str() {
+        "off" => Ok(0),
+        "1" => Ok(1),
+        "2" => Ok(25),
+        "3" => Ok(50),
+        "4" => Ok(75),
+        "5" => Ok(100),
+        _ => Err(problem(
+            "Vent position must be off or 1–5; positions are not degrees.",
+        )),
+    }
 }
 fn fan_value(value: &str) -> Result<i32> {
     if value.eq_ignore_ascii_case("auto") {
@@ -176,6 +197,8 @@ fn change(command: DeviceCommand) -> Result<SettingsChange> {
         DeviceCommand::Fan { value } => c.fan = Some(fan_value(&value)?),
         DeviceCommand::Mode { value } => c.mode = Some(value.value()),
         DeviceCommand::Swing { value } => c.swing = Some(value.value()),
+        DeviceCommand::VerticalAngle { value } => c.vertical_angle = Some(angle_value(&value)?),
+        DeviceCommand::HorizontalAngle { value } => c.horizontal_angle = Some(angle_value(&value)?),
         DeviceCommand::Boost { value } => c.boost = Some(value.enabled()),
         DeviceCommand::Set(o) => {
             c.power = o.power.map(|v| v.enabled());
@@ -184,6 +207,8 @@ fn change(command: DeviceCommand) -> Result<SettingsChange> {
             c.fan = o.fan.map(|v| fan_value(&v)).transpose()?;
             c.swing = o.swing.map(|v| v.value());
             c.boost = o.boost.map(|v| v.enabled());
+            c.vertical_angle = o.vertical_angle.map(|v| angle_value(&v)).transpose()?;
+            c.horizontal_angle = o.horizontal_angle.map(|v| angle_value(&v)).transpose()?;
         }
         _ => return Err(problem("Choose a device control command.")),
     }
@@ -199,6 +224,8 @@ fn change(command: DeviceCommand) -> Result<SettingsChange> {
         && c.mode.is_none()
         && c.fan.is_none()
         && c.swing.is_none()
+        && c.vertical_angle.is_none()
+        && c.horizontal_angle.is_none()
         && c.boost.is_none()
     {
         return Err(problem(
@@ -272,6 +299,19 @@ fn print_device(d: &DeviceSnapshot, json: bool) -> Result<()> {
         name(SWING_NAMES, d.swing),
         if d.boost { "On" } else { "Off" }
     );
+    for (label, value, options) in [
+        ("Vertical vent", d.vertical_angle, &d.vertical_angles),
+        ("Horizontal vent", d.horizontal_angle, &d.horizontal_angles),
+    ] {
+        if !options.is_empty() {
+            println!(
+                "{label}: {}",
+                value
+                    .map(|v| name(crate::ANGLE_NAMES, v))
+                    .unwrap_or("Unknown".into())
+            );
+        }
+    }
     Ok(())
 }
 fn prompt_account() -> Result<String> {
@@ -451,6 +491,27 @@ mod tests {
         assert_eq!(fan_value("AUTO").unwrap(), 102);
         let d = DeviceCli::try_parse_from(["ac-man <DEVICE>", "set"]).unwrap();
         assert!(change(d.command).is_err());
+    }
+    #[test]
+    fn vent_positions_parse_without_claiming_degrees() {
+        for (position, wire) in [
+            ("off", 0),
+            ("1", 1),
+            ("2", 25),
+            ("3", 50),
+            ("4", 75),
+            ("5", 100),
+        ] {
+            let args =
+                DeviceCli::try_parse_from(["ac-man <DEVICE>", "vertical-angle", position]).unwrap();
+            assert_eq!(change(args.command).unwrap().vertical_angle, Some(wire));
+        }
+        for invalid in ["0", "6", "25", "90", "NaN", "-1"] {
+            assert!(angle_value(invalid).is_err());
+        }
+        let args = DeviceCli::try_parse_from(["ac-man <DEVICE>", "set", "--horizontal-angle", "3"])
+            .unwrap();
+        assert_eq!(change(args.command).unwrap().horizontal_angle, Some(50));
     }
     #[test]
     fn terminal_labels_are_sanitized() {

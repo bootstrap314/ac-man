@@ -51,6 +51,84 @@ mod tests {
         assert_eq!(state.encode(1), fixture("set_from_state"));
     }
     #[test]
+    fn additional_capabilities_remain_pending_until_merged() {
+        let mut caps = Capabilities::decode(&frame(3, vec![0xb5, 1, 0x10, 2, 1, 1, 1], 1)).unwrap();
+        assert!(caps.additional);
+        assert!(caps.custom_fan);
+        assert!(!caps.vertical_angle);
+        // No reply or a malformed reply must not change the cached first page.
+        assert!(Capabilities::decode(&frame(3, vec![0xb5, 1], 1)).is_err());
+        assert!(caps.additional);
+        let additional =
+            Capabilities::decode(&frame(3, vec![0xb5, 2, 9, 0, 1, 1, 0x15, 2, 1, 1, 0], 2))
+                .unwrap();
+        caps.merge(additional);
+        assert!(!caps.additional);
+        assert!(caps.custom_fan);
+        assert!(caps.vertical_angle);
+        assert_eq!(caps.swings, vec![0, 3, 12, 15]);
+    }
+    #[test]
+    fn vent_frames_match_msmart_ng_2026_9_0() {
+        let caps =
+            Capabilities::decode(&frame(3, vec![0xb5, 2, 9, 0, 1, 1, 10, 0, 1, 1], 1)).unwrap();
+        assert_eq!(
+            hex::encode(angle_query(&caps, 1).unwrap()),
+            "aa12ac00000000000003b10209000a00011761"
+        );
+        let change = SettingsChange {
+            vertical_angle: Some(25),
+            horizontal_angle: Some(75),
+            ..Default::default()
+        };
+        caps.validate(&change).unwrap();
+        assert_eq!(
+            hex::encode(angle_command(&change, 1).unwrap()),
+            "aa16ac00000000000002b002090001190a00014b012de3"
+        );
+        let unsupported =
+            Capabilities::decode(&frame(3, vec![0xb5, 2, 9, 0, 1, 0, 10, 0, 1, 2], 1)).unwrap();
+        assert!(angle_query(&unsupported, 1).is_none());
+        assert!(unsupported.validate(&change).is_err());
+        assert!(
+            caps.validate(&SettingsChange {
+                vertical_angle: Some(45),
+                ..Default::default()
+            })
+            .is_err()
+        );
+    }
+    #[test]
+    fn vent_responses_reject_bad_data_and_do_not_confirm_unknown_positions() {
+        let bytes = frame(3, vec![0xb1, 2, 9, 0, 0, 1, 25, 10, 0, 0, 1, 75], 1);
+        assert_eq!(decode_angles(&bytes).unwrap(), (Some(25), Some(75)));
+        assert_eq!(
+            decode_angles(&frame(
+                3,
+                vec![0xb1, 2, 9, 0, 0x10, 1, 25, 10, 0, 0, 1, 42],
+                1
+            ))
+            .unwrap(),
+            (None, None)
+        );
+        assert!(decode_angles(&frame(3, vec![0xb1, 1, 9, 0, 0, 20, 25], 1)).is_err());
+        for end in 0..bytes.len() {
+            assert!(decode_angles(&bytes[..end]).is_err());
+        }
+        // A valid outer checksum cannot make a sequence byte a vent value.
+        for sequence in [1, 25, 50, 75, 100] {
+            assert!(decode_angles(&frame(3, vec![0xb1, 1, 9, 0, 0, 1], sequence)).is_err());
+        }
+        let mut state = State::decode(&fixture("state_response")).unwrap();
+        let change = SettingsChange {
+            vertical_angle: Some(25),
+            ..Default::default()
+        };
+        assert!(!state.matches(&change));
+        state.vertical_angle = Some(25);
+        assert!(state.matches(&change));
+    }
+    #[test]
     fn corrupt_and_truncated_frames_are_rejected() {
         let mut bytes = fixture("state_response");
         for end in 0..bytes.len() {
@@ -169,6 +247,8 @@ pub struct State {
     pub mode: i32,
     pub fan: i32,
     pub swing: i32,
+    pub vertical_angle: Option<i32>,
+    pub horizontal_angle: Option<i32>,
     pub boost: bool,
     pub indoor: Option<f64>,
     pub outdoor: Option<f64>,
@@ -217,6 +297,8 @@ impl State {
             mode: i32::from((p[2] >> 5) & 7),
             fan: i32::from(p[3] & 0x7f),
             swing: i32::from(p[7] & 15),
+            vertical_angle: None,
+            horizontal_angle: None,
             boost: p[8] & 0x20 != 0 || p[10] & 2 != 0,
             indoor: ambient(p[11], p[15] & 15, fahrenheit),
             outdoor: ambient(p[12], p[15] >> 4, fahrenheit),
@@ -293,6 +375,10 @@ impl State {
             && c.mode.is_none_or(|v| v == self.mode)
             && c.fan.is_none_or(|v| v == self.fan)
             && c.swing.is_none_or(|v| v == self.swing)
+            && c.vertical_angle
+                .is_none_or(|v| Some(v) == self.vertical_angle)
+            && c.horizontal_angle
+                .is_none_or(|v| Some(v) == self.horizontal_angle)
             && c.boost.is_none_or(|v| v == self.boost)
     }
 }
@@ -304,6 +390,8 @@ pub struct Capabilities {
     pub modes: Vec<i32>,
     pub fans: Vec<i32>,
     pub swings: Vec<i32>,
+    pub vertical_angle: bool,
+    pub horizontal_angle: bool,
     pub custom_fan: bool,
     pub boost: bool,
     pub min_temp: f64,
@@ -339,6 +427,8 @@ impl Capabilities {
             modes: vec![],
             fans: vec![],
             swings: vec![],
+            vertical_angle: false,
+            horizontal_angle: false,
             custom_fan: false,
             boost: false,
             min_temp: 16.0,
@@ -348,6 +438,7 @@ impl Capabilities {
         Ok(c)
     }
     pub fn merge(&mut self, other: Self) {
+        self.additional = false;
         self.raw.extend(other.raw);
         self.update();
     }
@@ -355,6 +446,8 @@ impl Capabilities {
         self.raw.get(&id).and_then(|v| v.first().copied())
     }
     fn update(&mut self) {
+        self.vertical_angle = self.value(0x0009) == Some(1);
+        self.horizontal_angle = self.value(0x000a) == Some(1);
         self.modes = vec![5];
         if let Some(v) = self.value(0x214) {
             if [0, 1, 5, 6, 9, 11, 13, 14, 15].contains(&v) {
@@ -424,6 +517,8 @@ impl Capabilities {
             && c.mode.is_none()
             && c.fan.is_none()
             && c.swing.is_none()
+            && c.vertical_angle.is_none()
+            && c.horizontal_angle.is_none()
             && c.boost.is_none()
         {
             return Err(problem("Choose at least one setting."));
@@ -449,9 +544,75 @@ impl Capabilities {
         if c.swing.is_some_and(|v| !self.swings.contains(&v)) {
             return Err(problem("This AC does not support that swing setting."));
         }
+        for (value, supported) in [
+            (c.vertical_angle, self.vertical_angle),
+            (c.horizontal_angle, self.horizontal_angle),
+        ] {
+            if value.is_some_and(|v| !supported || ![0, 1, 25, 50, 75, 100].contains(&v)) {
+                return Err(problem("This AC does not support that vent position."));
+            }
+        }
         if c.boost.is_some() && !self.boost {
             return Err(problem("This AC does not support Boost."));
         }
         Ok(())
     }
+}
+
+// Property IDs, payload format, and indexed positions cross-checked against
+// mill1000/midea-msmart msmart/device/AC/{command,device}.py.
+pub fn angle_query(caps: &Capabilities, sequence: u8) -> Option<Vec<u8>> {
+    let mut p = vec![0xb1, 0];
+    for (id, supported) in [(9u8, caps.vertical_angle), (10, caps.horizontal_angle)] {
+        if supported {
+            p.extend([id, 0]);
+            p[1] += 1;
+        }
+    }
+    (p[1] > 0).then(|| frame(3, p, sequence))
+}
+pub fn angle_command(change: &SettingsChange, sequence: u8) -> Option<Vec<u8>> {
+    let mut p = vec![0xb0, 0];
+    for (id, value) in [(9u8, change.vertical_angle), (10, change.horizontal_angle)] {
+        if let Some(v) = value {
+            p.extend([id, 0, 1, v as u8]);
+            p[1] += 1;
+        }
+    }
+    (p[1] > 0).then(|| frame(2, p, sequence))
+}
+pub fn decode_angles(bytes: &[u8]) -> Result<(Option<i32>, Option<i32>)> {
+    let p = payload(bytes)?;
+    if p.len() < 3 || ![0xb0, 0xb1].contains(&p[0]) {
+        return Err(problem("Invalid vent position response."));
+    }
+    // payload() removes the CRC but retains the trailing message sequence.
+    // It must never be mistaken for a property header or value.
+    let data_end = p.len() - 1;
+    let (mut vertical, mut horizontal) = (None, None);
+    let mut offset = 2;
+    for _ in 0..p[1] {
+        if offset + 4 > data_end {
+            return Err(problem("Incomplete vent position response."));
+        }
+        let id = u16::from_le_bytes([p[offset], p[offset + 1]]);
+        let failed = p[offset + 2] & 0x10 != 0;
+        let size = p[offset + 3] as usize;
+        offset += 4;
+        if offset + size > data_end {
+            return Err(problem("Incomplete vent position response."));
+        }
+        if !failed && size > 0 {
+            let value = i32::from(p[offset]);
+            if [0, 1, 25, 50, 75, 100].contains(&value) {
+                match id {
+                    9 => vertical = Some(value),
+                    10 => horizontal = Some(value),
+                    _ => {}
+                }
+            }
+        }
+        offset += size;
+    }
+    Ok((vertical, horizontal))
 }
