@@ -301,6 +301,8 @@ jobs:
           ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG")
           object_type=$(jq -r '.object.type' <<< "$ref")
           object_sha=$(jq -r '.object.sha' <<< "$ref")
+          notes_object_type=$object_type
+          notes_object_sha=$object_sha
           # Annotated tags (including nested tags) must resolve to the same tested commit.
           for _ in {1..10}; do
             [[ "$object_type" == tag ]] || break
@@ -312,6 +314,21 @@ jobs:
             echo 'Tag changed after validation; refusing to publish. Start a new release run.' >&2
             exit 1
           fi
+          # --notes-from-tag requires a local Git checkout and cannot be used
+          # with --repo. Read the verified tag's message through the API instead.
+          notes_file="$RUNNER_TEMP/release-notes.md"
+          if [[ "$notes_object_type" == tag ]]; then
+            gh api "repos/$GITHUB_REPOSITORY/git/tags/$notes_object_sha" --jq '.message' > "$notes_file"
+          else
+            gh api "repos/$GITHUB_REPOSITORY/git/commits/$RELEASE_COMMIT" --jq '.message' > "$notes_file"
+          fi
+          python3 - "$notes_file" <<'PYNOTES'
+          import pathlib, re, sys
+          path = pathlib.Path(sys.argv[1])
+          # Signed tag annotations include the signature after their prose.
+          notes = re.split(r'\n-----BEGIN (?:PGP|SSH) SIGNATURE-----', path.read_text(), maxsplit=1)[0]
+          path.write_text(notes.rstrip() + '\n')
+          PYNOTES
           cd release-assets
           gh release create "$RELEASE_TAG" \
             "ac-man-$RELEASE_TAG-x86_64-unknown-linux-gnu.tar.gz" \
@@ -320,4 +337,4 @@ jobs:
             "ac-man-macos-$RELEASE_TAG-aarch64-apple-darwin.zip" \
             SHA256SUMS SOURCE.txt \
             --repo "$GITHUB_REPOSITORY" --verify-tag --target "$RELEASE_COMMIT" \
-            --title "$RELEASE_TAG" --notes-from-tag
+            --title "$RELEASE_TAG" --notes-file "$notes_file"
