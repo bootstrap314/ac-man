@@ -430,7 +430,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             autoFan.isEnabled = enabled && !boostOn && d.fans.contains { $0.value == 102 }
             boost.state = boostOn ? .on : .off; boost.isEnabled = enabled && d.supportsBoost
             fanNote.stringValue = boostOn ? "Boost controls the fan speed. Turn it off to adjust manually."
-                : (d.customFan ? "Drag to preview. Release to apply." : "This model supports fixed fan speeds; the slider snaps to them.")
+                : (d.customFan ? "" : "This model supports fixed fan speeds; the slider snaps to them.")
+            fanNote.isHidden = !boostOn && d.customFan
         } else {
             roomStatus.stringValue = "Status unavailable"
             power.title = "Power"
