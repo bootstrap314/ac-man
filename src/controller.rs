@@ -2,7 +2,7 @@ use crate::cloud::{CloudClient, DiscoveredDevice};
 use crate::protocol::{self, Capabilities, State};
 use crate::storage::{self, Record, SavedAuth, Store};
 use crate::{
-    AcError, AppSnapshot, DeviceSnapshot, FAN_NAMES, MODE_NAMES, Result, SWING_NAMES,
+    ANGLE_NAMES, AcError, AppSnapshot, DeviceSnapshot, FAN_NAMES, MODE_NAMES, Result, SWING_NAMES,
     SettingsChange, choices, problem,
 };
 use std::{
@@ -179,10 +179,14 @@ impl AcController {
         let mut state=s.read_device(&record).await?;
         let caps=s.caps.get(&record.cloud_id).ok_or_else(||problem("Read this AC's supported settings before changing it."))?;
         state.apply(&change,caps)?;
-        let frame=state.encode(s.next_sequence());
+        let regular = change.power.is_some() || change.temperature.is_some() || change.mode.is_some()
+            || change.fan.is_some() || change.swing.is_some() || change.boost.is_some();
+        let frame=regular.then(|| state.encode(s.next_sequence()));
+        let angles=protocol::angle_command(&change,s.next_sequence());
         // Never automatically retry a write: a lost acknowledgement may still mean it applied.
         let result=async {
-            s.cloud.send_frame(&record.cloud_id,&frame).await?;
+            if let Some(frame) = frame { s.cloud.send_frame(&record.cloud_id,&frame).await?; }
+            if let Some(frame) = angles { s.cloud.send_frame(&record.cloud_id,&frame).await?; }
             for attempt in 0..3 {
                 tokio::time::sleep(Duration::from_millis(if attempt==0 {500} else {1000})).await;
                 let actual=s.read_device(&record).await?;
@@ -365,14 +369,23 @@ impl Inner {
                 .send_frame(&record.cloud_id, &frame)
                 .await?
                 .ok_or_else(|| problem("The AC did not reply to its capabilities query."))?;
-            let mut caps = Capabilities::decode(&response)?;
-            if caps.additional {
-                let frame = protocol::capability_query(true, self.next_sequence());
-                if let Some(response) = self.cloud.send_frame(&record.cloud_id, &frame).await? {
-                    caps.merge(Capabilities::decode(&response)?);
-                }
-            }
+            let caps = Capabilities::decode(&response)?;
             self.caps.insert(record.cloud_id.clone(), caps);
+        }
+        // Keep first-page controls available, but don't permanently cache a
+        // missing optional page. Try it once per read until a valid reply arrives.
+        if self
+            .caps
+            .get(&record.cloud_id)
+            .is_some_and(|caps| caps.additional)
+        {
+            let frame = protocol::capability_query(true, self.next_sequence());
+            if let Ok(Some(response)) = self.cloud.send_frame(&record.cloud_id, &frame).await
+                && let Ok(additional) = Capabilities::decode(&response)
+                && let Some(caps) = self.caps.get_mut(&record.cloud_id)
+            {
+                caps.merge(additional);
+            }
         }
         let frame = protocol::state_query(self.next_sequence());
         let response = self
@@ -380,7 +393,21 @@ impl Inner {
             .send_frame(&record.cloud_id, &frame)
             .await?
             .ok_or_else(|| problem("The AC did not return its current settings."))?;
-        let state = State::decode(&response)?;
+        let mut state = State::decode(&response)?;
+        let sequence = self.next_sequence();
+        let query = self
+            .caps
+            .get(&record.cloud_id)
+            .and_then(|caps| protocol::angle_query(caps, sequence));
+        // Optional properties must not make basic controls unavailable on firmware
+        // that advertises a capability but fails to answer the property query.
+        if let Some(query) = query
+            && let Ok(Some(response)) = self.cloud.send_frame(&record.cloud_id, &query).await
+            && let Ok((vertical, horizontal)) = protocol::decode_angles(&response)
+        {
+            state.vertical_angle = vertical;
+            state.horizontal_angle = horizontal;
+        }
         self.states.insert(record.cloud_id.clone(), state.clone());
         self.errors.remove(&record.cloud_id);
         self.updated.insert(
@@ -416,6 +443,18 @@ impl Inner {
                 mode: state.map_or(0, |s| s.mode),
                 fan: state.map_or(102, |s| s.fan),
                 swing: state.map_or(0, |s| s.swing),
+                vertical_angle: state.and_then(|s| s.vertical_angle),
+                horizontal_angle: state.and_then(|s| s.horizontal_angle),
+                vertical_angles: if caps.is_some_and(|c| c.vertical_angle) {
+                    choices(&[0, 1, 25, 50, 75, 100], ANGLE_NAMES)
+                } else {
+                    vec![]
+                },
+                horizontal_angles: if caps.is_some_and(|c| c.horizontal_angle) {
+                    choices(&[0, 1, 25, 50, 75, 100], ANGLE_NAMES)
+                } else {
+                    vec![]
+                },
                 boost: state.is_some_and(|s| s.boost),
                 custom_fan: caps.is_some_and(|c| c.custom_fan),
                 supports_boost: caps.is_some_and(|c| c.boost),

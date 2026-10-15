@@ -22,6 +22,7 @@ cp .build/release/AcMan "$staging/Contents/MacOS/"
 # Native archive debug symbols can retain local source paths after linking.
 strip -S "$staging/Contents/MacOS/AcMan"
 cp Info.plist "$staging/Contents/Info.plist"
+cp assets/AppIcon.icns "$staging/Contents/Resources/"
 cp LICENSE THIRD_PARTY_NOTICES.md "$staging/Contents/Resources/"
 if [[ -f licenses/DEPENDENCIES.html ]]; then
   cp licenses/DEPENDENCIES.html "$staging/Contents/Resources/"
