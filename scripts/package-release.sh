@@ -36,7 +36,7 @@ copy_notices() {
   mkdir -p "$destination/licenses"
   cp licenses/DEPENDENCIES.html "$destination/licenses/"
   # Keep the README's relative screenshot and signing-guide links functional.
-  for document in docs/macos-release.md docs/images/ac-man-controls.jpg; do
+  for document in docs/macos-release.md docs/images/ac-man-appearances.png docs/images/ac-man-light.png docs/images/ac-man-dark.png; do
     test -s "$document"
     mkdir -p "$destination/$(dirname -- "$document")"
     cp "$document" "$destination/$document"
