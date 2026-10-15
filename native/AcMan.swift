@@ -357,7 +357,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         configure(autoFan, #selector(setAutoFan)); configure(boost, #selector(setBoost))
         for button in [autoFan, boost] {
             button.setButtonType(.pushOnPushOff); button.bezelStyle = .rounded
-            button.contentTintColor = .systemBlue
+            button.contentTintColor = nil
         }
         let fanOptions = NSStackView(views: [autoFan, boost]); fanOptions.spacing = 28; contents.addArrangedSubview(fanOptions)
         fanNote.font = .systemFont(ofSize: 11); fanNote.textColor = .secondaryLabelColor

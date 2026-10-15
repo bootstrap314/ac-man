@@ -54,8 +54,8 @@ final class ClimateBackgroundView: NSView {
         // Tint only the background layer, never the opacity of the controls.
         effectiveAppearance.performAsCurrentDrawingAppearance {
             let tint = dark
-                ? NSColor(calibratedWhite: 0.12, alpha: 0.18)
-                : NSColor(calibratedRed: 0.91, green: 0.95, blue: 1, alpha: 0.12)
+                ? NSColor(calibratedWhite: 0.10, alpha: 0.22)
+                : NSColor(calibratedRed: 0.84, green: 0.89, blue: 0.95, alpha: 0.18)
             contentContainer.layer?.backgroundColor = (solid ? NSColor.windowBackgroundColor : tint).cgColor
         }
     }
