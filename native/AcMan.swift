@@ -273,6 +273,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let win = window("Air conditioner", width: 380, height: 380); deviceWindow = win
         win.isOpaque = false; win.backgroundColor = .clear
         win.titlebarAppearsTransparent = true
+        win.isMovable = true
+        win.isMovableByWindowBackground = true
         win.contentView = ClimateBackgroundView()
         let contents = stack(in: win, padding: 20, spacing: 12); deviceContents = contents
         heading.font = .systemFont(ofSize: 20, weight: .semibold)
