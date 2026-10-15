@@ -62,8 +62,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let roomStatus = NSTextField(labelWithString: "Waiting for status")
     private let power = PowerButton(frame: .zero)
     private let targetReading = NSTextField(labelWithString: "—°")
-    private let cooler = NSButton(title: "−", target: nil, action: nil)
-    private let warmer = NSButton(title: "+", target: nil, action: nil)
+    private let cooler = TemperatureButton(increasesTemperature: false)
+    private let warmer = TemperatureButton(increasesTemperature: true)
     private let mode = NSPopUpButton()
     private let modeSegments = NSSegmentedControl()
     private var modeRow: NSStackView?
@@ -344,14 +344,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         targetReading.setContentHuggingPriority(.defaultLow, for: .horizontal)
         targetReading.setAccessibilityLabel("Target temperature")
         for (button, action, label) in [(cooler, #selector(lowerTemperature), "Decrease temperature"), (warmer, #selector(raiseTemperature), "Increase temperature")] {
-            configure(button, action); button.bezelStyle = .circular
-            button.font = .systemFont(ofSize: 24, weight: .regular)
-            button.contentTintColor = .systemBlue
-            button.widthAnchor.constraint(equalToConstant: 40).isActive = true
-            button.heightAnchor.constraint(equalToConstant: 40).isActive = true
+            configure(button, action)
+            button.widthAnchor.constraint(equalToConstant: 64).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 64).isActive = true
             button.setAccessibilityLabel(label)
         }
         let temperatureRow = NSStackView(views: [cooler, targetReading, warmer]); temperatureRow.spacing = 12
+        temperatureRow.alignment = .centerY
         let temperatureContainer = NSView()
         temperatureRow.translatesAutoresizingMaskIntoConstraints = false
         temperatureContainer.addSubview(temperatureRow)
@@ -361,8 +360,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             temperatureRow.bottomAnchor.constraint(equalTo: temperatureContainer.bottomAnchor)
         ])
         full(temperatureContainer, in: contents)
+        mode.controlSize = .large; mode.font = .systemFont(ofSize: 15)
         configure(mode, #selector(setMode)); modeRow = row("Mode", mode, in: contents)
         configure(modeSegments, #selector(setSegmentMode)); modeSegments.segmentStyle = .rounded
+        modeSegments.controlSize = .large
+        modeSegments.font = .systemFont(ofSize: 15)
+        modeSegments.segmentDistribution = .fillEqually
+        modeSegments.heightAnchor.constraint(equalToConstant: 38).isActive = true
         modeSegments.trackingMode = .selectOne; modeSegments.setAccessibilityLabel("Operating mode")
         full(modeSegments, in: contents)
         fanPercent.alignment = .right; fanPercent.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium)
@@ -374,6 +378,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         configure(autoFan, #selector(setAutoFan)); configure(boost, #selector(setBoost))
         for button in [autoFan, boost] {
             button.setButtonType(.pushOnPushOff); button.bezelStyle = .rounded
+            button.controlSize = .large; button.font = .systemFont(ofSize: 15)
             button.contentTintColor = nil
         }
         let fanOptions = NSStackView(views: [autoFan, boost]); fanOptions.spacing = 28; contents.addArrangedSubview(fanOptions)
