@@ -79,7 +79,6 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var verticalAngleRow: NSStackView?
     private var horizontalAngleRow: NSStackView?
     private let footer = NSTextField(wrappingLabelWithString: "")
-    private let spinner = NSProgressIndicator()
     private let retry = NSButton(title: "Refresh", target: nil, action: nil)
     private let rename = NSButton(title: "Rename room…", target: nil, action: nil)
 
@@ -161,7 +160,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(item("\(device.label)    \(state)", #selector(openDevice(_:)), value: device.id))
         }
         menu.addItem(.separator())
-        let refresh = item(refreshing ? "Refreshing…" : "Refresh status", #selector(refreshAll))
+        let refresh = item("Refresh status", #selector(refreshAll))
         refresh.isEnabled = snapshot.signedIn && !refreshing; menu.addItem(refresh)
         if snapshot.signedIn {
             let logout = item("Sign out & forget saved login…", #selector(signOut))
@@ -369,12 +368,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         configure(horizontalAngle, #selector(setHorizontalAngle))
         horizontalAngle.setAccessibilityLabel("Horizontal vent position")
         horizontalAngleRow = row("Horizontal vent", horizontalAngle, in: contents)
-        spinner.style = .spinning; spinner.controlSize = .small; spinner.isDisplayedWhenStopped = false
-        spinner.widthAnchor.constraint(equalToConstant: 16).isActive = true
         footer.font = .systemFont(ofSize: 11); footer.textColor = .secondaryLabelColor
         footer.heightAnchor.constraint(equalToConstant: 42).isActive = true
         configure(retry, #selector(refreshAll)); retry.bezelStyle = .rounded
-        let bottom = NSStackView(views: [spinner, footer, retry]); bottom.spacing = 10; full(bottom, in: contents)
+        let bottom = NSStackView(views: [footer, retry]); bottom.spacing = 10; full(bottom, in: contents)
         footer.setContentHuggingPriority(.defaultLow, for: .horizontal)
     }
 
@@ -437,15 +434,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             power.title = "Power"
             fan.isEnabled = false; autoFan.isEnabled = false; boost.isEnabled = false
         }
-        if change != nil { footer.stringValue = "Applying and checking your change…" }
-        else if temperatureDrafts[d.id] != nil { footer.stringValue = "Adjusting temperature…" }
-        else if let error = operationErrors[d.id] { footer.stringValue = error }
+        if let error = operationErrors[d.id] { footer.stringValue = error }
         else if !snapshot.signedIn { footer.stringValue = "Sign in from the menu bar to control this AC." }
-        else if refreshing { footer.stringValue = "Refreshing in the background…" }
         else if !d.error.isEmpty { footer.stringValue = d.error }
         else if d.updated > 0 { footer.stringValue = "Updated \(Date(timeIntervalSince1970: d.updated).formatted(date: .omitted, time: .shortened))" }
-        else { footer.stringValue = "Waiting for the first status update." }
-        if change != nil || refreshing { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
+        else { footer.stringValue = "" }
         fitDeviceWindow()
     }
 
