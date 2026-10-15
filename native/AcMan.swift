@@ -301,17 +301,28 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let contents = stack(in: win, padding: 20, spacing: 12, topPadding: 44); deviceContents = contents
         heading.font = .systemFont(ofSize: 20, weight: .semibold)
         heading.lineBreakMode = .byTruncatingTail
+        heading.alignment = .center
         heading.setContentHuggingPriority(.defaultLow, for: .horizontal)
         configure(power, #selector(togglePower))
         power.widthAnchor.constraint(equalToConstant: 38).isActive = true
         power.heightAnchor.constraint(equalToConstant: 38).isActive = true
-        let header = NSStackView(views: [heading, power]); header.spacing = 12; full(header, in: contents)
+        configure(rename, #selector(renameRoom))
+        rename.title = ""; rename.isBordered = false; rename.imagePosition = .imageOnly
+        rename.image = NSImage(systemSymbolName: "pencil", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .regular))
+        rename.contentTintColor = .secondaryLabelColor
+        rename.toolTip = "Rename air conditioner"; rename.setAccessibilityLabel("Rename air conditioner")
+        rename.widthAnchor.constraint(equalToConstant: 24).isActive = true
+        rename.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        let header = NSStackView(views: [rename, heading, power])
+        header.orientation = .vertical; header.alignment = .centerX; header.spacing = 8
+        heading.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
+        full(header, in: contents)
         identity.font = .systemFont(ofSize: 11); identity.textColor = .secondaryLabelColor
         identity.lineBreakMode = .byTruncatingMiddle
         identity.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        configure(rename, #selector(renameRoom)); rename.bezelStyle = .rounded
-        rename.title = "Rename…"; rename.setAccessibilityLabel("Rename room")
-        let details = NSStackView(views: [identity, rename]); details.spacing = 8; full(details, in: contents)
+        identity.alignment = .center
+        full(identity, in: contents)
         roomStatus.font = .systemFont(ofSize: 15, weight: .semibold)
         roomStatus.setContentHuggingPriority(.defaultLow, for: .horizontal)
         roomStatus.font = .systemFont(ofSize: 12)
