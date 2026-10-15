@@ -393,11 +393,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             full(setting, in: contents)
         }
         fanSetting("Automatic fan", symbol: "fanblades", toggle: autoFan)
-        let fanDivider = NSBox(); fanDivider.boxType = .separator
-        full(fanDivider, in: contents)
         fanSetting("Boost", symbol: "bolt", toggle: boost)
         fanNote.font = .systemFont(ofSize: 11); fanNote.textColor = .secondaryLabelColor
         full(fanNote, in: contents); fanNote.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        let fanDivider = NSBox(); fanDivider.boxType = .separator
+        full(fanDivider, in: contents)
         configure(swing, #selector(setSwing)); row("Swing", swing, in: contents)
         configure(verticalAngle, #selector(setVerticalAngle))
         verticalAngle.setAccessibilityLabel("Vertical vent position")
