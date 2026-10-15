@@ -43,8 +43,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let identity = NSTextField(labelWithString: "")
     private let roomStatus = NSTextField(labelWithString: "Waiting for status")
     private let power = NSButton(title: "Turn on", target: nil, action: nil)
-    private let temperature = NSPopUpButton()
+    private let targetReading = NSTextField(labelWithString: "—°")
+    private let cooler = NSButton(title: "−", target: nil, action: nil)
+    private let warmer = NSButton(title: "+", target: nil, action: nil)
     private let mode = NSPopUpButton()
+    private let modeSegments = NSSegmentedControl()
+    private var modeRow: NSStackView?
+    private var modeChoices: [Choice] = []
     private let fan = FanSlider(value: 50, minValue: 1, maxValue: 100, target: nil, action: nil)
     private let fanPercent = NSTextField(labelWithString: "—")
     private let autoFan = NSButton(checkboxWithTitle: "Auto", target: nil, action: nil)
@@ -178,7 +183,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func stack(in window: NSWindow, padding: CGFloat = 24, spacing: CGFloat = 14) -> NSStackView {
         let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = spacing
         stack.translatesAutoresizingMaskIntoConstraints = false
-        let content = window.contentView!; content.addSubview(stack)
+        let content = (window.contentView as? ClimateBackgroundView)?.contentContainer ?? window.contentView!; content.addSubview(stack)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: padding),
             stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -padding),
@@ -266,9 +271,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func buildDeviceWindow() {
         let win = window("Air conditioner", width: 380, height: 380); deviceWindow = win
-        let contents = stack(in: win, padding: 20, spacing: 10); deviceContents = contents
+        win.isOpaque = false; win.backgroundColor = .clear
+        win.titlebarAppearsTransparent = true
+        win.contentView = ClimateBackgroundView()
+        let contents = stack(in: win, padding: 20, spacing: 12); deviceContents = contents
         heading.font = .systemFont(ofSize: 20, weight: .semibold)
-        heading.lineBreakMode = .byTruncatingTail; full(heading, in: contents)
+        heading.lineBreakMode = .byTruncatingTail
+        heading.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        configure(power, #selector(togglePower)); power.bezelStyle = .rounded
+        power.contentTintColor = .systemBlue
+        let header = NSStackView(views: [heading, power]); header.spacing = 12; full(header, in: contents)
         identity.font = .systemFont(ofSize: 11); identity.textColor = .secondaryLabelColor
         identity.lineBreakMode = .byTruncatingMiddle
         identity.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -277,10 +289,31 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let details = NSStackView(views: [identity, rename]); details.spacing = 8; full(details, in: contents)
         roomStatus.font = .systemFont(ofSize: 15, weight: .semibold)
         roomStatus.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        configure(power, #selector(togglePower)); power.bezelStyle = .rounded
-        let status = NSStackView(views: [roomStatus, power]); status.spacing = 8; full(status, in: contents)
-        configure(temperature, #selector(setTemperature)); row("Temperature", temperature, in: contents)
-        configure(mode, #selector(setMode)); row("Mode", mode, in: contents)
+        roomStatus.font = .systemFont(ofSize: 12)
+        roomStatus.textColor = .secondaryLabelColor
+        full(roomStatus, in: contents)
+        let targetCaption = NSTextField(labelWithString: "TARGET TEMPERATURE")
+        targetCaption.font = .systemFont(ofSize: 10, weight: .semibold)
+        targetCaption.textColor = .secondaryLabelColor
+        targetCaption.alignment = .center; full(targetCaption, in: contents)
+        targetReading.font = .monospacedDigitSystemFont(ofSize: 52, weight: .light)
+        targetReading.alignment = .center
+        targetReading.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        targetReading.setAccessibilityLabel("Target temperature")
+        for (button, action, label) in [(cooler, #selector(lowerTemperature), "Decrease temperature"), (warmer, #selector(raiseTemperature), "Increase temperature")] {
+            configure(button, action); button.bezelStyle = .circular
+            button.font = .systemFont(ofSize: 24, weight: .regular)
+            button.contentTintColor = .systemBlue
+            button.widthAnchor.constraint(equalToConstant: 40).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 40).isActive = true
+            button.setAccessibilityLabel(label)
+        }
+        let temperatureRow = NSStackView(views: [cooler, targetReading, warmer]); temperatureRow.spacing = 12
+        full(temperatureRow, in: contents)
+        configure(mode, #selector(setMode)); modeRow = row("Mode", mode, in: contents)
+        configure(modeSegments, #selector(setSegmentMode)); modeSegments.segmentStyle = .rounded
+        modeSegments.trackingMode = .selectOne; modeSegments.setAccessibilityLabel("Operating mode")
+        full(modeSegments, in: contents)
         fanPercent.alignment = .right; fanPercent.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium)
         fanPercent.widthAnchor.constraint(equalToConstant: 40).isActive = true
         configure(fan, #selector(previewFan)); fan.isContinuous = true; fan.setAccessibilityLabel("Fan speed percentage")
@@ -288,6 +321,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let fanControl = NSStackView(views: [fan, fanPercent]); fanControl.spacing = 8
         row("Fan speed", fanControl, in: contents)
         configure(autoFan, #selector(setAutoFan)); configure(boost, #selector(setBoost))
+        for button in [autoFan, boost] {
+            button.setButtonType(.pushOnPushOff); button.bezelStyle = .rounded
+            button.contentTintColor = .systemBlue
+        }
         let fanOptions = NSStackView(views: [autoFan, boost]); fanOptions.spacing = 28; contents.addArrangedSubview(fanOptions)
         fanNote.font = .systemFont(ofSize: 11); fanNote.textColor = .secondaryLabelColor
         full(fanNote, in: contents); fanNote.heightAnchor.constraint(equalToConstant: 30).isActive = true
@@ -312,11 +349,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateDevice() {
         guard let win = deviceWindow, let d = selected else { return }
         win.title = d.label; heading.stringValue = d.label
-        identity.stringValue = "Device \(d.localId)" + (d.mac.isEmpty ? "" : " · \(d.mac)")
+        identity.stringValue = "Device \(d.localId)"
         let change = pending[d.id]
         let enabled = snapshot.signedIn && d.online && change == nil && !authenticating
         rename.isEnabled = change == nil
-        power.isEnabled = enabled; temperature.isEnabled = enabled; mode.isEnabled = enabled; swing.isEnabled = enabled
+        power.isEnabled = enabled; modeSegments.isEnabled = enabled;
+        let target = change?.temperature ?? d.temperature
+        targetReading.stringValue = target.map { "\(number($0))°" } ?? "—°"
+        targetReading.setAccessibilityValue(target.map { "\(number($0)) degrees Celsius" } ?? "Unknown")
+        cooler.isEnabled = enabled && target != nil && target! > d.minTemperature
+        warmer.isEnabled = enabled && target != nil && target! < d.maxTemperature; mode.isEnabled = enabled; swing.isEnabled = enabled
         verticalAngleRow?.isHidden = d.verticalAngles.isEmpty
         horizontalAngleRow?.isHidden = d.horizontalAngles.isEmpty
         verticalAngle.isEnabled = enabled && !d.verticalAngles.isEmpty
@@ -328,11 +370,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let speed = change?.fan ?? d.fan
             roomStatus.stringValue = "\(powerOn ? "On" : "Off") · Room \(number(d.indoor))°C"
             power.title = powerOn ? "Turn off" : "Turn on"
-            let temperatures = stride(from: d.minTemperature, through: d.maxTemperature, by: 0.5).map {
-                Choice(value: Int32(($0 * 2).rounded()), name: "\(number($0))°C")
-            }
-            updatePicker(temperature, choices: temperatures, value: Int32(((change?.temperature ?? d.temperature ?? 24) * 2).rounded()))
             updatePicker(mode, choices: d.modes, value: change?.mode ?? d.mode)
+            if modeChoices != d.modes {
+                modeChoices = d.modes; modeSegments.segmentCount = d.modes.count
+                for (index, choice) in d.modes.enumerated() {
+                    modeSegments.setLabel(choice.name, forSegment: index)
+                }
+            }
+            modeSegments.selectedSegment = d.modes.firstIndex { $0.value == (change?.mode ?? d.mode) } ?? -1
+            let compactModes = (1...4).contains(d.modes.count)
+            modeRow?.isHidden = compactModes; modeSegments.isHidden = !compactModes
             updatePicker(swing, choices: d.swings, value: change?.swing ?? d.swing)
             updateAnglePicker(verticalAngle, choices: d.verticalAngles, value: change?.verticalAngle ?? d.verticalAngle)
             updateAnglePicker(horizontalAngle, choices: d.horizontalAngles, value: change?.horizontalAngle ?? d.horizontalAngle)
@@ -351,6 +398,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             fanNote.stringValue = boostOn ? "Boost controls the fan speed. Turn it off to adjust manually."
                 : (d.customFan ? "Drag to preview. Release to apply." : "This model supports fixed fan speeds; the slider snaps to them.")
         } else {
+            roomStatus.stringValue = "Status unavailable"
+            power.title = "Power"
             fan.isEnabled = false; autoFan.isEnabled = false; boost.isEnabled = false
         }
         if change != nil { footer.stringValue = "Applying and checking your change…" }
@@ -407,7 +456,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func togglePower() { if let d = selected { change(power: !d.power) } }
-    @objc private func setTemperature() { change(temperature: Double(temperature.selectedTag()) / 2) }
+    @objc private func lowerTemperature() { adjustTemperature(by: -0.5) }
+    @objc private func raiseTemperature() { adjustTemperature(by: 0.5) }
+    private func adjustTemperature(by step: Double) {
+        guard let d = selected, let value = d.temperature else { return }
+        change(temperature: min(d.maxTemperature, max(d.minTemperature, value + step)))
+    }
+    @objc private func setSegmentMode() {
+        guard modeChoices.indices.contains(modeSegments.selectedSegment) else { return }
+        change(mode: modeChoices[modeSegments.selectedSegment].value)
+    }
     @objc private func setMode() { change(mode: Int32(mode.selectedTag())) }
     @objc private func setSwing() { change(swing: Int32(swing.selectedTag())) }
     @objc private func setVerticalAngle() { change(verticalAngle: Int32(verticalAngle.selectedTag())) }
