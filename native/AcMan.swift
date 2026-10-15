@@ -41,6 +41,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var refreshing = false
     private var authenticating = false
     private var pending: [String: SettingsChange] = [:]
+    private var queued: [String: SettingsChange] = [:]
     private var temperatureDrafts: [String: Double] = [:]
     private var temperatureTasks: [String: Task<Void, Never>] = [:]
     private var operationErrors: [String: String] = [:]
@@ -152,10 +153,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         for device in snapshot.devices {
             let state: String
-            if pending[device.id] != nil { state = "Updating…" }
-            else if !snapshot.signedIn { state = "Sign in to control" }
+            if !snapshot.signedIn { state = "Sign in to control" }
             else if !device.error.isEmpty { state = "Connection issue" }
-            else if device.online { state = device.power ? "On · \(number(device.temperature))°C" : "Off" }
+            else if device.online { state = (pending[device.id]?.power ?? device.power) ? "On · \(number(temperatureDrafts[device.id] ?? pending[device.id]?.temperature ?? device.temperature))°C" : "Off" }
             else { state = "Awaiting status" }
             menu.addItem(item("\(device.label)    \(state)", #selector(openDevice(_:)), value: device.id))
         }
@@ -382,8 +382,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         win.title = d.label; heading.stringValue = d.label
         identity.stringValue = "Device \(d.localId)"
         let change = pending[d.id]
-        let enabled = snapshot.signedIn && d.online && change == nil && !authenticating
-        rename.isEnabled = change == nil
+        let enabled = snapshot.signedIn && d.online && !authenticating
+        rename.isEnabled = !authenticating
         power.isEnabled = enabled; modeSegments.isEnabled = enabled;
         let target = temperatureDrafts[d.id] ?? change?.temperature ?? d.temperature
         targetReading.stringValue = target.map { "\(number($0))°" } ?? "—°"
@@ -470,28 +470,48 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         picker.menu?.item(withTag: -1)?.isEnabled = false
     }
 
+    private func merging(_ older: SettingsChange?, _ newer: SettingsChange) -> SettingsChange {
+        SettingsChange(power: newer.power ?? older?.power,
+                       temperature: newer.temperature ?? older?.temperature,
+                       mode: newer.mode ?? older?.mode, fan: newer.fan ?? older?.fan,
+                       swing: newer.swing ?? older?.swing, boost: newer.boost ?? older?.boost,
+                       verticalAngle: newer.verticalAngle ?? older?.verticalAngle,
+                       horizontalAngle: newer.horizontalAngle ?? older?.horizontalAngle)
+    }
+
     private func change(power: Bool? = nil, temperature: Double? = nil, mode: Int32? = nil, fan: Int32? = nil, swing: Int32? = nil, boost: Bool? = nil, verticalAngle: Int32? = nil, horizontalAngle: Int32? = nil, deviceID: String? = nil) {
-        guard let core, let d = snapshot.devices.first(where: { $0.id == (deviceID ?? selectedID) }), snapshot.signedIn, !authenticating, d.online, pending[d.id] == nil else { return }
+        guard let core, let d = snapshot.devices.first(where: { $0.id == (deviceID ?? selectedID) }), snapshot.signedIn, !authenticating, d.online else { return }
         let draft = temperatureDrafts.removeValue(forKey: d.id)
         temperatureTasks.removeValue(forKey: d.id)?.cancel()
         let change = SettingsChange(power: power, temperature: temperature ?? draft, mode: mode, fan: fan, swing: swing, boost: boost, verticalAngle: verticalAngle, horizontalAngle: horizontalAngle)
-        pending[d.id] = change; operationErrors.removeValue(forKey: d.id); updateDevice()
+        let alreadyRunning = pending[d.id] != nil
+        // Latest value wins per setting; different settings are combined into the next request.
+        queued[d.id] = merging(queued[d.id], change)
+        pending[d.id] = merging(pending[d.id], change)
+        operationErrors.removeValue(forKey: d.id); updateDevice()
+        guard !alreadyRunning else { return }
         Task {
-            do { accept(try await core.control(selector: d.id, change: change)) }
-            catch {
-                operationErrors[d.id] = errorMessage(error)
-                if let current = try? await core.snapshot() { accept(current) }
+            while snapshot.signedIn, let next = queued.removeValue(forKey: d.id) {
+                do { accept(try await core.control(selector: d.id, change: next)) }
+                catch {
+                    operationErrors[d.id] = errorMessage(error)
+                    if let current = try? await core.snapshot() { accept(current) }
+                }
+                // Never retry a failed request. Only explicit newer input is sent next.
             }
+            queued.removeValue(forKey: d.id)
             pending.removeValue(forKey: d.id); updateDevice()
         }
     }
 
-    @objc private func togglePower() { if let d = selected { change(power: !d.power) } }
+    @objc private func togglePower() {
+        if let d = selected { change(power: !(pending[d.id]?.power ?? d.power)) }
+    }
     @objc private func lowerTemperature() { adjustTemperature(by: -0.5) }
     @objc private func raiseTemperature() { adjustTemperature(by: 0.5) }
     private func adjustTemperature(by step: Double) {
         guard let d = selected, snapshot.signedIn, !authenticating, d.online,
-              pending[d.id] == nil, let value = temperatureDrafts[d.id] ?? d.temperature else { return }
+              let value = temperatureDrafts[d.id] ?? pending[d.id]?.temperature ?? d.temperature else { return }
         let target = min(d.maxTemperature, max(d.minTemperature, value + step))
         temperatureTasks.removeValue(forKey: d.id)?.cancel()
         temperatureDrafts[d.id] = target
@@ -503,7 +523,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self, !Task.isCancelled,
                   let desired = self.temperatureDrafts[id] else { return }
             self.temperatureTasks.removeValue(forKey: id)
-            if self.snapshot.devices.first(where: { $0.id == id })?.temperature == desired {
+            if self.pending[id]?.temperature == nil,
+               self.snapshot.devices.first(where: { $0.id == id })?.temperature == desired {
                 self.temperatureDrafts.removeValue(forKey: id)
                 self.updateDevice()
                 return
@@ -542,7 +563,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func commitFan() {
         guard fan.isEnabled, let d = selected else { return }
         let value = fanPercentage(); manualSpeeds[d.id] = value
-        if d.fan != value { change(fan: Int32(value)) }
+        if (pending[d.id]?.fan ?? d.fan) != value { change(fan: Int32(value)) }
     }
 
     @objc private func renameRoom() {
