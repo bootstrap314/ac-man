@@ -317,9 +317,22 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         roomStatus.textColor = .secondaryLabelColor
         roomStatus.alignment = .center
         roomStatus.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let header = NSStackView(views: [rename, heading, roomStatus, power])
+        let nameRow = NSView()
+        for view in [heading, rename] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            nameRow.addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            heading.centerXAnchor.constraint(equalTo: nameRow.centerXAnchor),
+            heading.topAnchor.constraint(equalTo: nameRow.topAnchor, constant: 8),
+            heading.bottomAnchor.constraint(equalTo: nameRow.bottomAnchor),
+            heading.widthAnchor.constraint(lessThanOrEqualTo: nameRow.widthAnchor, constant: -56),
+            rename.leadingAnchor.constraint(equalTo: heading.trailingAnchor, constant: 2),
+            rename.topAnchor.constraint(equalTo: nameRow.topAnchor),
+        ])
+        let header = NSStackView(views: [nameRow, roomStatus, power])
         header.orientation = .vertical; header.alignment = .centerX; header.spacing = 8
-        heading.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
+        nameRow.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
         roomStatus.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
         full(header, in: contents)
         let targetCaption = NSTextField(labelWithString: "TARGET TEMPERATURE")
