@@ -41,6 +41,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var refreshing = false
     private var authenticating = false
     private var pending: [String: SettingsChange] = [:]
+    private var temperatureDrafts: [String: Double] = [:]
+    private var temperatureTasks: [String: Task<Void, Never>] = [:]
     private var operationErrors: [String: String] = [:]
     private var selectedID: String?
     private var manualSpeeds: [String: Int] = [:]
@@ -118,7 +120,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    func applicationWillTerminate(_ notification: Notification) { timer?.invalidate() }
+    func applicationWillTerminate(_ notification: Notification) { timer?.invalidate(); cancelTemperatureDrafts() }
 
     private func installKeyboardMenu() {
         let main = NSMenu()
@@ -173,6 +175,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func accept(_ value: AppSnapshot) {
         snapshot = value
+        if !value.signedIn { cancelTemperatureDrafts() }
         updateDevice()
     }
 
@@ -265,11 +268,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func signOut() {
         guard let core, !authenticating, pending.isEmpty else { return }
+        cancelTemperatureDrafts(); updateDevice()
         let alert = NSAlert(); alert.messageText = "Sign out of SmartHome?"
         alert.informativeText = "This removes the shared app and CLI login from Keychain. Your room labels stay on this Mac."
         alert.addButton(withTitle: "Sign out"); alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
+        cancelTemperatureDrafts()
         authenticating = true
         Task {
             do { accept(try await core.logout()); operationErrors.removeAll() }
@@ -318,6 +323,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         targetCaption.alignment = .center; full(targetCaption, in: contents)
         targetReading.font = .monospacedDigitSystemFont(ofSize: 52, weight: .light)
         targetReading.alignment = .center
+        targetReading.widthAnchor.constraint(equalToConstant: 150).isActive = true
         targetReading.setContentHuggingPriority(.defaultLow, for: .horizontal)
         targetReading.setAccessibilityLabel("Target temperature")
         for (button, action, label) in [(cooler, #selector(lowerTemperature), "Decrease temperature"), (warmer, #selector(raiseTemperature), "Increase temperature")] {
@@ -329,7 +335,15 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.setAccessibilityLabel(label)
         }
         let temperatureRow = NSStackView(views: [cooler, targetReading, warmer]); temperatureRow.spacing = 12
-        full(temperatureRow, in: contents)
+        let temperatureContainer = NSView()
+        temperatureRow.translatesAutoresizingMaskIntoConstraints = false
+        temperatureContainer.addSubview(temperatureRow)
+        NSLayoutConstraint.activate([
+            temperatureRow.centerXAnchor.constraint(equalTo: temperatureContainer.centerXAnchor),
+            temperatureRow.topAnchor.constraint(equalTo: temperatureContainer.topAnchor),
+            temperatureRow.bottomAnchor.constraint(equalTo: temperatureContainer.bottomAnchor)
+        ])
+        full(temperatureContainer, in: contents)
         configure(mode, #selector(setMode)); modeRow = row("Mode", mode, in: contents)
         configure(modeSegments, #selector(setSegmentMode)); modeSegments.segmentStyle = .rounded
         modeSegments.trackingMode = .selectOne; modeSegments.setAccessibilityLabel("Operating mode")
@@ -374,7 +388,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let enabled = snapshot.signedIn && d.online && change == nil && !authenticating
         rename.isEnabled = change == nil
         power.isEnabled = enabled; modeSegments.isEnabled = enabled;
-        let target = change?.temperature ?? d.temperature
+        let target = temperatureDrafts[d.id] ?? change?.temperature ?? d.temperature
         targetReading.stringValue = target.map { "\(number($0))°" } ?? "—°"
         targetReading.setAccessibilityValue(target.map { "\(number($0)) degrees Celsius" } ?? "Unknown")
         cooler.isEnabled = enabled && target != nil && target! > d.minTemperature
@@ -423,6 +437,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             fan.isEnabled = false; autoFan.isEnabled = false; boost.isEnabled = false
         }
         if change != nil { footer.stringValue = "Applying and checking your change…" }
+        else if temperatureDrafts[d.id] != nil { footer.stringValue = "Adjusting temperature…" }
         else if let error = operationErrors[d.id] { footer.stringValue = error }
         else if !snapshot.signedIn { footer.stringValue = "Sign in from the menu bar to control this AC." }
         else if refreshing { footer.stringValue = "Refreshing in the background…" }
@@ -461,9 +476,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         picker.menu?.item(withTag: -1)?.isEnabled = false
     }
 
-    private func change(power: Bool? = nil, temperature: Double? = nil, mode: Int32? = nil, fan: Int32? = nil, swing: Int32? = nil, boost: Bool? = nil, verticalAngle: Int32? = nil, horizontalAngle: Int32? = nil) {
-        guard let core, let d = selected, snapshot.signedIn, d.online, pending[d.id] == nil else { return }
-        let change = SettingsChange(power: power, temperature: temperature, mode: mode, fan: fan, swing: swing, boost: boost, verticalAngle: verticalAngle, horizontalAngle: horizontalAngle)
+    private func change(power: Bool? = nil, temperature: Double? = nil, mode: Int32? = nil, fan: Int32? = nil, swing: Int32? = nil, boost: Bool? = nil, verticalAngle: Int32? = nil, horizontalAngle: Int32? = nil, deviceID: String? = nil) {
+        guard let core, let d = snapshot.devices.first(where: { $0.id == (deviceID ?? selectedID) }), snapshot.signedIn, !authenticating, d.online, pending[d.id] == nil else { return }
+        let draft = temperatureDrafts.removeValue(forKey: d.id)
+        temperatureTasks.removeValue(forKey: d.id)?.cancel()
+        let change = SettingsChange(power: power, temperature: temperature ?? draft, mode: mode, fan: fan, swing: swing, boost: boost, verticalAngle: verticalAngle, horizontalAngle: horizontalAngle)
         pending[d.id] = change; operationErrors.removeValue(forKey: d.id); updateDevice()
         Task {
             do { accept(try await core.control(selector: d.id, change: change)) }
@@ -479,9 +496,35 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func lowerTemperature() { adjustTemperature(by: -0.5) }
     @objc private func raiseTemperature() { adjustTemperature(by: 0.5) }
     private func adjustTemperature(by step: Double) {
-        guard let d = selected, let value = d.temperature else { return }
-        change(temperature: min(d.maxTemperature, max(d.minTemperature, value + step)))
+        guard let d = selected, snapshot.signedIn, !authenticating, d.online,
+              pending[d.id] == nil, let value = temperatureDrafts[d.id] ?? d.temperature else { return }
+        let target = min(d.maxTemperature, max(d.minTemperature, value + step))
+        temperatureTasks.removeValue(forKey: d.id)?.cancel()
+        temperatureDrafts[d.id] = target
+        operationErrors.removeValue(forKey: d.id)
+        updateDevice()
+        let id = d.id
+        temperatureTasks[id] = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
+            guard let self, !Task.isCancelled,
+                  let desired = self.temperatureDrafts[id] else { return }
+            self.temperatureTasks.removeValue(forKey: id)
+            if self.snapshot.devices.first(where: { $0.id == id })?.temperature == desired {
+                self.temperatureDrafts.removeValue(forKey: id)
+                self.updateDevice()
+                return
+            }
+            self.change(temperature: desired, deviceID: id)
+            self.temperatureDrafts.removeValue(forKey: id)
+            self.updateDevice()
+        }
     }
+    private func cancelTemperatureDrafts() {
+        for task in temperatureTasks.values { task.cancel() }
+        temperatureTasks.removeAll()
+        temperatureDrafts.removeAll()
+    }
+
     @objc private func setSegmentMode() {
         guard modeChoices.indices.contains(modeSegments.selectedSegment) else { return }
         change(mode: modeChoices[modeSegments.selectedSegment].value)

@@ -47,13 +47,15 @@ final class ClimateBackgroundView: NSView {
         let solid = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
             || NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        effect.material = .sidebar
+        effect.material = dark ? .hudWindow : .popover
         effect.isHidden = solid
+        // Keep the blur fully rendered so sharp desktop details do not bleed through.
+        effect.alphaValue = 1
         // Tint only the background layer, never the opacity of the controls.
         effectiveAppearance.performAsCurrentDrawingAppearance {
             let tint = dark
-                ? NSColor(calibratedWhite: 0.12, alpha: 0.22)
-                : NSColor(calibratedRed: 0.91, green: 0.95, blue: 1, alpha: 0.14)
+                ? NSColor(calibratedWhite: 0.12, alpha: 0.18)
+                : NSColor(calibratedRed: 0.91, green: 0.95, blue: 1, alpha: 0.12)
             contentContainer.layer?.backgroundColor = (solid ? NSColor.windowBackgroundColor : tint).cgColor
         }
     }

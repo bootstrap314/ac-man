@@ -6,6 +6,7 @@
 - New AC mascot application icon. The menu bar retains its monochrome symbol.
 - Smaller control window that fits the available settings.
 - Appearance follows macOS: blue-tinted blur in light mode and graphite blur in dark mode, with an opaque fallback when Reduce Transparency is enabled.
+- Rapid temperature clicks update the target immediately and send one cloud request after a half-second pause.
 - Removed the disabled SmartHome cloud menu entry.
 - Vertical and horizontal vent-position selectors appear on supported units. Positions 1–5 are presets, not degrees; swing remains available.
 
