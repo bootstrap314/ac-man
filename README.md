@@ -11,8 +11,11 @@ This is an unofficial community client. Model capabilities and SmartHome service
 On an Apple Silicon Mac running macOS 13 or later, install **both the menu-bar app and CLI** with Homebrew:
 
 ```sh
+brew trust --formula bootstrap314/tap/ac-man
 brew install --cask bootstrap314/tap/ac-man
 ```
+
+The first command approves the CLI dependency on Homebrew versions with tap trust enforcement. If your Homebrew does not have a `trust` command, skip that line. The cask then installs both components.
 
 Open **ac-man** from Applications and run `ac-man` in Terminal. The cask installs the CLI formula as a dependency.
 
