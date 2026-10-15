@@ -61,7 +61,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let heading = NSTextField(labelWithString: "Air conditioner")
     private let identity = NSTextField(labelWithString: "")
     private let roomStatus = NSTextField(labelWithString: "Waiting for status")
-    private let power = NSButton(title: "Turn on", target: nil, action: nil)
+    private let power = PowerButton(frame: .zero)
     private let targetReading = NSTextField(labelWithString: "—°")
     private let cooler = NSButton(title: "−", target: nil, action: nil)
     private let warmer = NSButton(title: "+", target: nil, action: nil)
@@ -302,8 +302,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         heading.font = .systemFont(ofSize: 20, weight: .semibold)
         heading.lineBreakMode = .byTruncatingTail
         heading.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        configure(power, #selector(togglePower)); power.bezelStyle = .rounded
-        power.contentTintColor = .systemBlue
+        configure(power, #selector(togglePower))
+        power.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        power.heightAnchor.constraint(equalToConstant: 38).isActive = true
         let header = NSStackView(views: [heading, power]); header.spacing = 12; full(header, in: contents)
         identity.font = .systemFont(ofSize: 11); identity.textColor = .secondaryLabelColor
         identity.lineBreakMode = .byTruncatingMiddle
@@ -400,7 +401,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let boostOn = change?.boost ?? d.boost
             let speed = change?.fan ?? d.fan
             roomStatus.stringValue = "\(powerOn ? "On" : "Off") · Room \(number(d.indoor))°C"
-            power.title = powerOn ? "Turn off" : "Turn on"
+            power.setPowerState(powerOn)
             updatePicker(mode, choices: d.modes, value: change?.mode ?? d.mode)
             if modeChoices != d.modes {
                 modeChoices = d.modes; modeSegments.segmentCount = d.modes.count
@@ -431,7 +432,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             fanNote.isHidden = !boostOn && d.customFan
         } else {
             roomStatus.stringValue = "Status unavailable"
-            power.title = "Power"
+            power.setPowerState(nil)
             fan.isEnabled = false; autoFan.isEnabled = false; boost.isEnabled = false
         }
         if let error = operationErrors[d.id] { footer.stringValue = error }
