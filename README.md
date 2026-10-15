@@ -6,6 +6,24 @@ Sign in with your own SmartHome account. The controller discovers the air condit
 
 This is an unofficial community client. Model capabilities and SmartHome service changes can affect compatibility.
 
+## Install
+
+On an Apple Silicon Mac running macOS 13 or later, install **both the menu-bar app and CLI** with Homebrew:
+
+```sh
+brew install --cask bootstrap314/tap/ac-man
+```
+
+Open **ac-man** from Applications and run `ac-man` in Terminal. The cask installs the CLI formula as a dependency.
+
+For CLI-only installation on Apple Silicon, Intel Mac, or Linux x86_64:
+
+```sh
+brew install --formula bootstrap314/tap/ac-man
+```
+
+You can also download directly from [Releases](https://github.com/bootstrap314/ac-man/releases/latest): the **DMG** contains the Mac menu-bar app with drag-to-Applications installation; the platform-specific **tar.gz** archives contain the CLI. The app and DMG are Developer ID signed and notarized. Linux CLI packages require glibc 2.36 or newer.
+
 ## Menu-bar application
 
 <img src="docs/images/ac-man-controls.jpg" alt="AC control window showing temperature, mode, fan percentage, Auto, Boost, and swing" width="430">
