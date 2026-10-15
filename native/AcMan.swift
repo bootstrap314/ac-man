@@ -79,7 +79,6 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var verticalAngleRow: NSStackView?
     private var horizontalAngleRow: NSStackView?
     private let footer = NSTextField(wrappingLabelWithString: "")
-    private let retry = NSButton(title: "Refresh", target: nil, action: nil)
     private let rename = NSButton(title: "Rename room…", target: nil, action: nil)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -389,8 +388,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         horizontalAngleRow = row("Horizontal vent", horizontalAngle, in: contents)
         footer.font = .systemFont(ofSize: 11); footer.textColor = .secondaryLabelColor
         footer.heightAnchor.constraint(equalToConstant: 42).isActive = true
-        configure(retry, #selector(refreshAll)); retry.bezelStyle = .rounded
-        let bottom = NSStackView(views: [footer, retry]); bottom.spacing = 10; full(bottom, in: contents)
+        full(footer, in: contents)
         footer.setContentHuggingPriority(.defaultLow, for: .horizontal)
     }
 
@@ -412,7 +410,6 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         horizontalAngleRow?.isHidden = d.horizontalAngles.isEmpty
         verticalAngle.isEnabled = enabled && !d.verticalAngles.isEmpty
         horizontalAngle.isEnabled = enabled && !d.horizontalAngles.isEmpty
-        retry.isEnabled = snapshot.signedIn && !refreshing
         if d.online {
             let powerOn = change?.power ?? d.power
             let boostOn = change?.boost ?? d.boost
@@ -455,8 +452,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let error = operationErrors[d.id] { footer.stringValue = error }
         else if !snapshot.signedIn { footer.stringValue = "Sign in from the menu bar to control this AC." }
         else if !d.error.isEmpty { footer.stringValue = d.error }
-        else if d.updated > 0 { footer.stringValue = "Updated \(Date(timeIntervalSince1970: d.updated).formatted(date: .omitted, time: .shortened))" }
         else { footer.stringValue = "" }
+        footer.isHidden = footer.stringValue.isEmpty
+        power.setConnectionBroken(snapshot.signedIn && (!d.online || !d.error.isEmpty || operationErrors[d.id] != nil))
         fitDeviceWindow()
     }
 

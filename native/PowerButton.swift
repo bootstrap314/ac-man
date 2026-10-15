@@ -4,6 +4,9 @@ import Cocoa
 @MainActor
 final class PowerButton: NSButton {
     private var hasKnownState = false
+    private var connectionBroken = false
+    private var flashGreen = false
+    private var connectionTimer: Timer?
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         title = ""
@@ -27,6 +30,33 @@ final class PowerButton: NSButton {
         needsDisplay = true
     }
 
+    func setConnectionBroken(_ broken: Bool) {
+        if broken != connectionBroken {
+            connectionBroken = broken
+            connectionTimer?.invalidate()
+            connectionTimer = nil
+            flashGreen = false
+            if broken {
+                let timer = Timer(timeInterval: 0.8, repeats: true) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.connectionBroken else { return }
+                        self.flashGreen.toggle()
+                        self.needsDisplay = true
+                    }
+                }
+                connectionTimer = timer
+                RunLoop.main.add(timer, forMode: .common)
+            }
+        }
+        if broken {
+            contentTintColor = .white
+            toolTip = "Connection unavailable"
+            setAccessibilityLabel("Air conditioner connection unavailable")
+            setAccessibilityValue("Connection unavailable")
+        }
+        needsDisplay = true
+    }
+
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         needsDisplay = true
@@ -40,8 +70,9 @@ final class PowerButton: NSButton {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         var fill = hasKnownState ? (state == .on ? NSColor.systemGreen : NSColor.systemRed)
             : NSColor(calibratedWhite: dark ? 0.28 : 0.94, alpha: 1)
+        if connectionBroken { fill = flashGreen ? .systemGreen : .systemRed }
         if isHighlighted { fill = fill.blended(withFraction: 0.12, of: .black) ?? fill }
-        if !isEnabled { fill = fill.withAlphaComponent(0.45) }
+        if !isEnabled && !connectionBroken { fill = fill.withAlphaComponent(0.45) }
         let diameter = max(0, min(bounds.width, bounds.height) - 2)
         let circle = NSBezierPath(ovalIn: NSRect(
             x: bounds.midX - diameter / 2, y: bounds.midY - diameter / 2,
