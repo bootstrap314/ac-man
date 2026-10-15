@@ -297,7 +297,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         win.isMovableByWindowBackground = true
         win.contentView = ClimateBackgroundView()
         let contents = stack(in: win, padding: 20, spacing: 12, topPadding: 44); deviceContents = contents
-        heading.font = .systemFont(ofSize: 20, weight: .semibold)
+        heading.font = .systemFont(ofSize: 24, weight: .semibold)
         heading.lineBreakMode = .byTruncatingTail
         heading.alignment = .center
         heading.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -312,7 +312,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rename.toolTip = "Rename air conditioner"; rename.setAccessibilityLabel("Rename air conditioner")
         rename.widthAnchor.constraint(equalToConstant: 24).isActive = true
         rename.heightAnchor.constraint(equalToConstant: 24).isActive = true
-        roomStatus.font = .systemFont(ofSize: 12)
+        roomStatus.font = .systemFont(ofSize: 16, weight: .medium)
         roomStatus.textColor = .secondaryLabelColor
         roomStatus.alignment = .center
         roomStatus.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -433,7 +433,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let powerOn = change?.power ?? d.power
             let boostOn = change?.boost ?? d.boost
             let speed = change?.fan ?? d.fan
-            roomStatus.stringValue = "Room \(number(d.indoor))°C"
+            roomStatus.stringValue = "Currently \(number(d.indoor))°C"
             power.setPowerState(powerOn)
             updatePicker(mode, choices: d.modes, value: change?.mode ?? d.mode)
             if modeChoices != d.modes {
