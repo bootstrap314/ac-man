@@ -8,19 +8,19 @@ This is an unofficial community client. Model capabilities and SmartHome service
 
 ## Menu-bar application
 
-<img src="docs/images/ac-man-controls.jpg" alt="AC control window showing temperature, mode, fan percentage, Auto, Boost, and swing" width="430">
+<img src="docs/images/ac-man-appearances.png" alt="Light and dark ac-man controls with centered temperature buttons, Automatic fan and Boost switches, and vent positions" width="1000">
 
-The control window opened by selecting a room in the menu bar. The screenshot uses an example room label.
+Light and dark appearances, rendered from the native controls with example room data. [Light view](docs/images/ac-man-light.png) · [Dark view](docs/images/ac-man-dark.png)
 
 Open **ac-man.app**, then click its air-conditioner icon in the menu bar. Sign in and choose a discovered AC to see its status and controls:
 
 - Power, target temperature in Celsius, operating mode, and swing.
 - Vertical and horizontal vent positions on units that advertise support.
-- Fan speed as a percentage slider, with an **Auto** option.
-- **Boost** for the unit's turbo setting.
+- Fan speed as a percentage slider, with an **Automatic fan** switch.
+- A **Boost** switch for the unit's turbo setting.
 - A local room label, shared with the CLI.
 
-Supported controls come from the unit's capabilities. Units with custom fan control accept whole percentages from 1–100; units with fixed speeds accept only the percentages they report. Disable Boost before choosing a manual fan speed. Commands are followed by a status read to confirm the result.
+Supported controls come from the unit's capabilities. Units with custom fan control accept whole percentages from 1–100; units with fixed speeds accept only the percentages they report. The fan slider is greyed out while Automatic fan or Boost is active. Switching Automatic fan off restores the previous manual speed; selecting a fan setting also turns Boost off. Commands are followed by a status read to confirm the result.
 
 The Swift interface awaits Rust operations asynchronously. Network requests do not run on the UI thread. The current app build targets Apple Silicon Macs running macOS 13 or later; CLI release packages also support Intel Macs and Linux x86_64. Local builds are ad hoc signed. The release workflow signs the app with Developer ID, notarizes it with Apple, and staples the ticket before publishing.
 

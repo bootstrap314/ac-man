@@ -70,8 +70,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var modeChoices: [Choice] = []
     private let fan = FanSlider(value: 50, minValue: 1, maxValue: 100, target: nil, action: nil)
     private let fanPercent = NSTextField(labelWithString: "—")
-    private let autoFan = NSButton(checkboxWithTitle: "Auto", target: nil, action: nil)
-    private let boost = NSButton(checkboxWithTitle: "Boost", target: nil, action: nil)
+    private let autoFan = NSSwitch()
+    private let boost = NSSwitch()
     private let fanNote = NSTextField(wrappingLabelWithString: "")
     private let swing = NSPopUpButton()
     private let verticalAngle = NSPopUpButton()
@@ -376,12 +376,26 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let fanControl = NSStackView(views: [fan, fanPercent]); fanControl.spacing = 8
         row("Fan speed", fanControl, in: contents)
         configure(autoFan, #selector(setAutoFan)); configure(boost, #selector(setBoost))
-        for button in [autoFan, boost] {
-            button.setButtonType(.pushOnPushOff); button.bezelStyle = .rounded
-            button.controlSize = .large; button.font = .systemFont(ofSize: 15)
-            button.contentTintColor = nil
+        func fanSetting(_ title: String, symbol: String, toggle: NSSwitch) {
+            let icon = NSImageView()
+            icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            icon.contentTintColor = .labelColor
+            icon.widthAnchor.constraint(equalToConstant: 20).isActive = true
+            icon.heightAnchor.constraint(equalToConstant: 20).isActive = true
+            let label = NSTextField(labelWithString: title)
+            label.font = .systemFont(ofSize: 15)
+            label.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            toggle.setAccessibilityLabel(title)
+            let setting = NSStackView(views: [icon, label, toggle])
+            setting.alignment = .centerY; setting.spacing = 12
+            setting.distribution = .fill
+            setting.heightAnchor.constraint(equalToConstant: 34).isActive = true
+            full(setting, in: contents)
         }
-        let fanOptions = NSStackView(views: [autoFan, boost]); fanOptions.spacing = 28; contents.addArrangedSubview(fanOptions)
+        fanSetting("Automatic fan", symbol: "fanblades", toggle: autoFan)
+        let fanDivider = NSBox(); fanDivider.boxType = .separator
+        full(fanDivider, in: contents)
+        fanSetting("Boost", symbol: "bolt", toggle: boost)
         fanNote.font = .systemFont(ofSize: 11); fanNote.textColor = .secondaryLabelColor
         full(fanNote, in: contents); fanNote.heightAnchor.constraint(equalToConstant: 30).isActive = true
         configure(swing, #selector(setSwing)); row("Swing", swing, in: contents)
@@ -439,20 +453,21 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if (1...100).contains(Int(speed)) && !boostOn { manualSpeeds[d.id] = Int(speed) }
                 fan.minValue = Double(fanSteps.first ?? 1); fan.maxValue = Double(fanSteps.last ?? 100)
                 fan.doubleValue = Double(speed == 102 ? (manualSpeeds[d.id] ?? 50) : Int(speed))
-                fanPercent.stringValue = speed == 102 ? "Auto" : "\(speed)%"
+                fanPercent.stringValue = boostOn ? "Boost" : (speed == 102 ? "Auto" : "\(speed)%")
                 autoFan.state = speed == 102 ? .on : .off
                 fan.setAccessibilityValueDescription(fanPercent.stringValue)
             }
-            fan.isEnabled = enabled && !boostOn && !fanSteps.isEmpty
-            autoFan.isEnabled = enabled && !boostOn && d.fans.contains { $0.value == 102 }
+            fan.isEnabled = enabled && !boostOn && speed != 102 && !fanSteps.isEmpty
+            fanPercent.textColor = fan.isEnabled ? .labelColor : .disabledControlTextColor
+            autoFan.isEnabled = enabled && d.fans.contains { $0.value == 102 }
             boost.state = boostOn ? .on : .off; boost.isEnabled = enabled && d.supportsBoost
-            fanNote.stringValue = boostOn ? "Boost controls the fan speed. Turn it off to adjust manually."
-                : (d.customFan ? "" : "This model supports fixed fan speeds; the slider snaps to them.")
-            fanNote.isHidden = !boostOn && d.customFan
+            fanNote.stringValue = "This model supports fixed fan speeds; the slider snaps to them."
+            fanNote.isHidden = d.customFan || boostOn || speed == 102
         } else {
             roomStatus.stringValue = "Status unavailable"
             power.setPowerState(nil)
             fan.isEnabled = false; autoFan.isEnabled = false; boost.isEnabled = false
+            fanPercent.textColor = .disabledControlTextColor
         }
         if let error = operationErrors[d.id] { footer.stringValue = error }
         else if !snapshot.signedIn { footer.stringValue = "Sign in from the menu bar to control this AC." }
@@ -570,7 +585,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func setVerticalAngle() { change(verticalAngle: Int32(verticalAngle.selectedTag())) }
     @objc private func setHorizontalAngle() { change(horizontalAngle: Int32(horizontalAngle.selectedTag())) }
     @objc private func setBoost() { change(boost: boost.state == .on) }
-    @objc private func setAutoFan() { change(fan: autoFan.state == .on ? 102 : Int32(fanPercentage())) }
+    @objc private func setAutoFan() {
+        // An explicit fan-mode selection takes control back from Boost.
+        change(fan: autoFan.state == .on ? 102 : Int32(fanPercentage()),
+               boost: selected?.supportsBoost == true ? false : nil)
+    }
     private func fanPercentage() -> Int {
         let value = Int(fan.doubleValue.rounded())
         return fanSteps.min { abs($0 - value) < abs($1 - value) } ?? min(100, max(1, value))
