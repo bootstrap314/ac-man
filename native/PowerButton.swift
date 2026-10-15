@@ -30,13 +30,20 @@ final class PowerButton: NSButton {
         needsDisplay = true
     }
 
+    override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: 38, height: 38) }
+
     override func draw(_ dirtyRect: NSRect) {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         var fill = state == .on ? NSColor.systemBlue
             : NSColor(calibratedWhite: dark ? 0.28 : 0.94, alpha: 1)
         if isHighlighted { fill = fill.blended(withFraction: 0.12, of: .black) ?? fill }
         if !isEnabled { fill = fill.withAlphaComponent(0.45) }
-        let circle = NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1))
+        let diameter = max(0, min(bounds.width, bounds.height) - 2)
+        let circle = NSBezierPath(ovalIn: NSRect(
+            x: bounds.midX - diameter / 2, y: bounds.midY - diameter / 2,
+            width: diameter, height: diameter))
         fill.setFill(); circle.fill()
         NSColor.white.withAlphaComponent(dark ? 0.12 : 0.55).setStroke()
         circle.lineWidth = 0.75; circle.stroke()
