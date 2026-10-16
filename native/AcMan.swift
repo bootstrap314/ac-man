@@ -68,7 +68,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let heading = NSTextField(labelWithString: "Air conditioner")
     private let roomStatus = NSTextField(labelWithString: "Waiting for status")
     private let power = PowerButton(frame: .zero)
-    private let targetReading = NSTextField(labelWithString: "—°")
+    private let targetReading = NSTextField(labelWithString: "—")
     private let cooler = TemperatureButton(increasesTemperature: false)
     private let warmer = TemperatureButton(increasesTemperature: true)
     private let mode = NSPopUpButton()
@@ -350,8 +350,6 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         contents.setCustomSpacing(4, after: targetCaption)
         targetReading.font = .monospacedDigitSystemFont(ofSize: 52, weight: .light)
         targetReading.alignment = .center
-        targetReading.widthAnchor.constraint(equalToConstant: 150).isActive = true
-        targetReading.setContentHuggingPriority(.defaultLow, for: .horizontal)
         targetReading.setAccessibilityLabel("Target temperature")
         for (button, action, label) in [(cooler, #selector(lowerTemperature), "Decrease temperature"), (warmer, #selector(raiseTemperature), "Increase temperature")] {
             configure(button, action)
@@ -359,7 +357,23 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.heightAnchor.constraint(equalToConstant: 64).isActive = true
             button.setAccessibilityLabel(label)
         }
-        let temperatureRow = NSStackView(views: [cooler, targetReading, warmer]); temperatureRow.spacing = 12
+        let targetDisplay = NSView()
+        let degree = NSTextField(labelWithString: "°")
+        degree.font = targetReading.font
+        degree.setAccessibilityElement(false)
+        for view in [targetReading, degree] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            targetDisplay.addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            targetDisplay.widthAnchor.constraint(equalToConstant: 150),
+            targetReading.centerXAnchor.constraint(equalTo: targetDisplay.centerXAnchor),
+            targetReading.topAnchor.constraint(equalTo: targetDisplay.topAnchor),
+            targetReading.bottomAnchor.constraint(equalTo: targetDisplay.bottomAnchor),
+            degree.leadingAnchor.constraint(equalTo: targetReading.trailingAnchor, constant: -2),
+            degree.firstBaselineAnchor.constraint(equalTo: targetReading.firstBaselineAnchor)
+        ])
+        let temperatureRow = NSStackView(views: [cooler, targetDisplay, warmer]); temperatureRow.spacing = 12
         temperatureRow.alignment = .centerY
         let temperatureContainer = NSView()
         temperatureRow.translatesAutoresizingMaskIntoConstraints = false
@@ -436,7 +450,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rename.isEnabled = !authenticating
         power.isEnabled = enabled; modeSegments.isEnabled = enabled;
         let target = temperatureDrafts[d.id] ?? change?.temperature ?? d.temperature
-        targetReading.stringValue = target.map { "\(number($0))°" } ?? "—°"
+        targetReading.stringValue = target.map { number($0) } ?? "—"
         targetReading.setAccessibilityValue(target.map { "\(number($0)) degrees Celsius" } ?? "Unknown")
         cooler.isEnabled = enabled && target != nil && target! > d.minTemperature
         warmer.isEnabled = enabled && target != nil && target! < d.maxTemperature; mode.isEnabled = enabled; swing.isEnabled = enabled
