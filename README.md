@@ -214,6 +214,8 @@ The runtime does not start a desktop keyring or D-Bus service, so it is mainly u
 
 The Ubuntu test job builds and smoke-tests the distroless Linux runtime once, then passes that exact image to the security job for scanning. Pinned audit tools are cached separately from vulnerability databases; scans still fetch current advisories. The independent scheduled workflow builds its own image.
 
+Cloud API tests: `cargo test --locked cloud::`. Test-only queued HTTP responses exercise request signatures and password hashing, regional routing, session headers, AC discovery, encrypted command/reply handling, acknowledgements, malformed responses, size limits, and error classification. Fixtures are synthetic; these tests make no network requests and need no account or devices. Real TLS, timeouts, and interface fallback still require separate transport integration tests.
+
 Native macOS control tests (no AC commands): `make test-native`.
 
 Trivy source and container scans publish separate SARIF analyses to GitHub **Security → Code scanning** for main and same-repository PRs. Reports are also saved as workflow artifacts, including fork PRs and release checks. High/Critical findings still fail CI; RustSec checks run with `cargo audit`. Trivy covers dependencies, secrets, and configuration rather than general application-code data-flow analysis.

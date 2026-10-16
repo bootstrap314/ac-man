@@ -15,6 +15,7 @@ dependencies = [
  "fs2",
  "hex",
  "hmac",
+ "http",
  "keyring",
  "md-5",
  "rand 0.8.8",
