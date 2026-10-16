@@ -23,9 +23,9 @@ struct ControlsTests {
             control.update(values: supported, selected: nil)
             let stack = control.subviews[0] as! NSStackView
             let buttons = stack.arrangedSubviews.compactMap { $0 as? NSButton }
-            check(buttons.count == 6, "Each supported position needs a button")
+            check(buttons.count == 5, "Each supported position needs a button")
             check(buttons.allSatisfy { $0.state == .off }, "Unknown position must not imply Off")
-            for (button, value) in zip(buttons, supported) {
+            for (button, value) in zip(buttons, supported.filter { $0 != 0 }) {
                 button.performClick(nil)
                 check(control.selectedValue == value, "Wrong protocol position sent")
                 check(recorder.values.last! == value, "Selection action must carry the protocol value")
@@ -35,13 +35,16 @@ struct ControlsTests {
             check(stack.arrangedSubviews[2] === buttons[2], "Refresh must preserve button identity and keyboard focus")
             control.update(values: supported, selected: 99)
             check(control.selectedValue == nil && buttons.allSatisfy { $0.state == .off }, "Unrecognized positions must remain unselected")
+            control.update(values: supported, selected: 0)
+            check(control.selectedValue == nil && buttons.allSatisfy { $0.state == .off }, "Zero must not appear as an Off position")
+            check(buttons.allSatisfy { $0.tag != 0 }, "Zero must never be sent by a position button")
             control.isEnabled = false
             let before = recorder.values.count
             buttons[1].performClick(nil)
             check(recorder.values.count == before, "Disabled controls must not send actions")
             check(buttons.allSatisfy { !$0.isEnabled }, "Disabled state must reach every button")
             control.update(values: [0, 50], selected: 50)
-            check(stack.arrangedSubviews.count == 2, "Unsupported positions must not be offered")
+            check(stack.arrangedSubviews.count == 1, "Unsupported positions must not be offered")
             check(stack.arrangedSubviews.compactMap { $0 as? NSButton }.allSatisfy { !$0.isEnabled }, "Rebuilding cannot enable offline controls")
             control.isEnabled = true
             check(stack.arrangedSubviews.compactMap { $0 as? NSButton }.allSatisfy { $0.isEnabled }, "Controls must recover after reconnect")

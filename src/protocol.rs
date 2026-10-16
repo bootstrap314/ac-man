@@ -91,6 +91,30 @@ mod tests {
         );
     }
     #[test]
+    fn swing_choices_follow_axis_capabilities() {
+        for (reported, expected) in [
+            (0, vec![0, 12]),
+            (1, vec![0, 3, 12, 15]),
+            (2, vec![0]),
+            (3, vec![0, 3]),
+        ] {
+            let caps =
+                Capabilities::decode(&frame(3, vec![0xb5, 1, 0x15, 2, 1, reported, 0], 1)).unwrap();
+            assert_eq!(caps.swings, expected);
+            for setting in [0, 3, 12, 15] {
+                assert_eq!(
+                    caps.validate(&SettingsChange {
+                        swing: Some(setting),
+                        ..Default::default()
+                    })
+                    .is_ok(),
+                    expected.contains(&setting)
+                );
+            }
+        }
+    }
+
+    #[test]
     fn additional_capabilities_remain_pending_until_merged() {
         let mut caps = Capabilities::decode(&frame(3, vec![0xb5, 1, 0x10, 2, 1, 1, 1], 1)).unwrap();
         assert!(caps.additional);

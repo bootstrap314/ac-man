@@ -25,6 +25,8 @@ final class VentPositionControl: NSControl {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func update(values: [Int32], selected: Int32?) {
+        // Zero is not a fixed vent direction; offer only positions 1–5.
+        let values = values.filter { [Int32(1), 25, 50, 75, 100].contains($0) }
         if self.values != values {
             self.values = values
             for view in buttons.arrangedSubviews { buttons.removeArrangedSubview(view); view.removeFromSuperview() }
