@@ -379,6 +379,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let fanControl = NSStackView(views: [fan, fanPercent]); fanControl.spacing = 8
         row("Fan speed", fanControl, in: contents)
         configure(autoFan, #selector(setAutoFan)); configure(boost, #selector(setBoost))
+        let fanSettings = NSStackView()
+        fanSettings.orientation = .vertical; fanSettings.alignment = .leading; fanSettings.spacing = 4
         func fanSetting(_ title: String, symbol: String, toggle: NSSwitch) {
             let icon = NSImageView()
             icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
@@ -393,12 +395,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             setting.alignment = .centerY; setting.spacing = 12
             setting.distribution = .fill
             setting.heightAnchor.constraint(equalToConstant: 34).isActive = true
-            full(setting, in: contents)
+            full(setting, in: fanSettings)
         }
         fanSetting("Automatic fan", symbol: "fanblades", toggle: autoFan)
         fanSetting("Boost", symbol: "bolt", toggle: boost)
         configure(eco, #selector(setEco))
         fanSetting("Eco mode", symbol: "leaf", toggle: eco)
+        full(fanSettings, in: contents)
         fanNote.font = .systemFont(ofSize: 11); fanNote.textColor = .secondaryLabelColor
         full(fanNote, in: contents); fanNote.heightAnchor.constraint(equalToConstant: 30).isActive = true
         let fanDivider = NSBox(); fanDivider.boxType = .separator
