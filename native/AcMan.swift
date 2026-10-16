@@ -461,6 +461,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if d.online {
             let powerOn = change?.power ?? d.power
             let boostOn = change?.boost ?? d.boost
+            let ecoOn = (change?.eco ?? d.eco) && !boostOn
             let speed = change?.fan ?? d.fan
             roomStatus.stringValue = "Currently \(number(d.indoor))°C"
             power.setPowerState(powerOn)
@@ -483,15 +484,15 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 fan.minValue = Double(fanSteps.first ?? 1); fan.maxValue = Double(fanSteps.last ?? 100)
                 fan.doubleValue = FanSpeedDisplay.sliderValue(speed, lastManual: manualSpeeds[d.id])
                 fanPercent.stringValue = FanSpeedDisplay.label(speed, boost: boostOn)
-                autoFan.state = speed == 102 ? .on : .off
+                autoFan.state = speed == 102 && !boostOn && !ecoOn ? .on : .off
                 fan.setAccessibilityValueDescription(fanPercent.stringValue)
             }
             fan.isEnabled = enabled && !boostOn && speed != 102 && !fanSteps.isEmpty
             fanPercent.textColor = fan.isEnabled ? .labelColor : .disabledControlTextColor
             autoFan.isEnabled = enabled && d.fans.contains { $0.value == 102 }
-            boost.state = boostOn ? .on : .off; boost.isEnabled = enabled && d.supportsBoost
-            eco.state = (change?.eco ?? d.eco) ? .on : .off
-            eco.isEnabled = enabled && d.supportsEco
+            boost.state = boostOn ? .on : .off; boost.isEnabled = enabled && d.supportsBoost && (speed != 102 || !fanSteps.isEmpty)
+            eco.state = ecoOn ? .on : .off
+            eco.isEnabled = enabled && d.supportsEco && (speed != 102 || !fanSteps.isEmpty)
             fanNote.stringValue = "This model supports fixed fan speeds; the slider snaps to them."
             fanNote.isHidden = d.customFan || boostOn || speed == 102
         } else {
@@ -616,12 +617,29 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func setSwing() { change(swing: Int32(swing.selectedTag())) }
     @objc private func setVerticalAngle() { change(verticalAngle: Int32(verticalAngle.selectedTag())) }
     @objc private func setHorizontalAngle() { change(horizontalAngle: Int32(horizontalAngle.selectedTag())) }
-    @objc private func setEco() { change(eco: eco.state == .on) }
-    @objc private func setBoost() { change(boost: boost.state == .on) }
+    private func manualFanSelection() -> Int32? {
+        guard let d = selected else { return nil }
+        let remembered = manualSpeeds[d.id] ?? fanPercentage()
+        return fanSteps.min { abs($0 - remembered) < abs($1 - remembered) }.map { Int32($0) }
+    }
+    @objc private func setEco() {
+        guard let d = selected else { return }
+        let on = eco.state == .on
+        change(fan: on ? manualFanSelection() : nil,
+               boost: on && d.supportsBoost ? false : nil, eco: on)
+    }
+    @objc private func setBoost() {
+        guard let d = selected else { return }
+        let on = boost.state == .on
+        change(fan: on ? manualFanSelection() : nil, boost: on,
+               eco: on && d.supportsEco ? false : nil)
+    }
     @objc private func setAutoFan() {
-        // An explicit fan-mode selection takes control back from Boost.
-        change(fan: autoFan.state == .on ? 102 : Int32(fanPercentage()),
-               boost: selected?.supportsBoost == true ? false : nil)
+        guard let d = selected else { return }
+        let on = autoFan.state == .on
+        change(fan: on ? 102 : manualFanSelection(),
+               boost: on && d.supportsBoost ? false : nil,
+               eco: on && d.supportsEco ? false : nil)
     }
     private func fanPercentage() -> Int {
         let value = Int(fan.doubleValue.rounded())

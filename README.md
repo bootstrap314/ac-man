@@ -41,7 +41,7 @@ Open **ac-man.app**, then click its air-conditioner icon in the menu bar. Sign i
 - A **Boost** switch for the unit's turbo setting and an **Eco mode** switch on supported units.
 - A local room label, shared with the CLI.
 
-Supported controls come from the unit's capabilities. Units with custom fan control accept whole percentages from 1–100; units with fixed speeds accept only the percentages they report. The fan slider is greyed out while Automatic fan or Boost is active. Switching Automatic fan off restores the previous manual speed; selecting a fan setting also turns Boost off. Commands are followed by a status read to confirm the result.
+Supported controls come from the unit's capabilities. Units with custom fan control accept whole percentages from 1–100; units with fixed speeds accept only the percentages they report. The fan slider is greyed out while Automatic fan or Boost is active. Automatic fan, Boost, and Eco are mutually exclusive in the menu-bar app: turning one on clears the other two in the same request. Turning a toggle off does not activate another. Selecting Boost or Eco restores a supported manual fan setting. Commands are followed by a status read to confirm the result.
 
 The Swift interface awaits Rust operations asynchronously. Network requests do not run on the UI thread. The current app build targets Apple Silicon Macs running macOS 13 or later; CLI release packages also support Intel Macs and Linux x86_64. Local builds are ad hoc signed. The release workflow signs the app with Developer ID, notarizes it with Apple, and staples the ticket before publishing.
 
