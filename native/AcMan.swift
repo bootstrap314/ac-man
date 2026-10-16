@@ -72,6 +72,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let fanPercent = NSTextField(labelWithString: "—")
     private let autoFan = NSSwitch()
     private let boost = NSSwitch()
+    private let eco = NSSwitch()
     private let fanNote = NSTextField(wrappingLabelWithString: "")
     private let swing = NSPopUpButton()
     private let verticalAngle = NSPopUpButton()
@@ -396,6 +397,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         fanSetting("Automatic fan", symbol: "fanblades", toggle: autoFan)
         fanSetting("Boost", symbol: "bolt", toggle: boost)
+        configure(eco, #selector(setEco))
+        fanSetting("Eco mode", symbol: "leaf", toggle: eco)
         fanNote.font = .systemFont(ofSize: 11); fanNote.textColor = .secondaryLabelColor
         full(fanNote, in: contents); fanNote.heightAnchor.constraint(equalToConstant: 30).isActive = true
         let fanDivider = NSBox(); fanDivider.boxType = .separator
@@ -463,12 +466,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             fanPercent.textColor = fan.isEnabled ? .labelColor : .disabledControlTextColor
             autoFan.isEnabled = enabled && d.fans.contains { $0.value == 102 }
             boost.state = boostOn ? .on : .off; boost.isEnabled = enabled && d.supportsBoost
+            eco.state = (change?.eco ?? d.eco) ? .on : .off
+            eco.isEnabled = enabled && d.supportsEco
             fanNote.stringValue = "This model supports fixed fan speeds; the slider snaps to them."
             fanNote.isHidden = d.customFan || boostOn || speed == 102
         } else {
             roomStatus.stringValue = "Status unavailable"
             power.setPowerState(nil)
-            fan.isEnabled = false; autoFan.isEnabled = false; boost.isEnabled = false
+            fan.isEnabled = false; autoFan.isEnabled = false; boost.isEnabled = false; eco.isEnabled = false
             fanPercent.textColor = .disabledControlTextColor
         }
         if let error = operationErrors[d.id] { footer.stringValue = error }
@@ -513,15 +518,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                        temperature: newer.temperature ?? older?.temperature,
                        mode: newer.mode ?? older?.mode, fan: newer.fan ?? older?.fan,
                        swing: newer.swing ?? older?.swing, boost: newer.boost ?? older?.boost,
+                       eco: newer.eco ?? older?.eco,
                        verticalAngle: newer.verticalAngle ?? older?.verticalAngle,
                        horizontalAngle: newer.horizontalAngle ?? older?.horizontalAngle)
     }
 
-    private func change(power: Bool? = nil, temperature: Double? = nil, mode: Int32? = nil, fan: Int32? = nil, swing: Int32? = nil, boost: Bool? = nil, verticalAngle: Int32? = nil, horizontalAngle: Int32? = nil, deviceID: String? = nil) {
+    private func change(power: Bool? = nil, temperature: Double? = nil, mode: Int32? = nil, fan: Int32? = nil, swing: Int32? = nil, boost: Bool? = nil, eco: Bool? = nil, verticalAngle: Int32? = nil, horizontalAngle: Int32? = nil, deviceID: String? = nil) {
         guard let core, let d = snapshot.devices.first(where: { $0.id == (deviceID ?? selectedID) }), snapshot.signedIn, !authenticating, d.online else { return }
         let draft = temperatureDrafts.removeValue(forKey: d.id)
         temperatureTasks.removeValue(forKey: d.id)?.cancel()
-        let change = SettingsChange(power: power, temperature: temperature ?? draft, mode: mode, fan: fan, swing: swing, boost: boost, verticalAngle: verticalAngle, horizontalAngle: horizontalAngle)
+        let change = SettingsChange(power: power, temperature: temperature ?? draft, mode: mode, fan: fan, swing: swing, boost: boost, eco: eco, verticalAngle: verticalAngle, horizontalAngle: horizontalAngle)
         let alreadyRunning = pending[d.id] != nil
         // Latest value wins per setting; different settings are combined into the next request.
         queued[d.id] = merging(queued[d.id], change)
@@ -586,6 +592,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func setSwing() { change(swing: Int32(swing.selectedTag())) }
     @objc private func setVerticalAngle() { change(verticalAngle: Int32(verticalAngle.selectedTag())) }
     @objc private func setHorizontalAngle() { change(horizontalAngle: Int32(horizontalAngle.selectedTag())) }
+    @objc private func setEco() { change(eco: eco.state == .on) }
     @objc private func setBoost() { change(boost: boost.state == .on) }
     @objc private func setAutoFan() {
         // An explicit fan-mode selection takes control back from Boost.

@@ -38,7 +38,7 @@ Open **ac-man.app**, then click its air-conditioner icon in the menu bar. Sign i
 - Power, target temperature in Celsius, operating mode, and swing.
 - Vertical and horizontal vent positions on units that advertise support.
 - Fan speed as a percentage slider, with an **Automatic fan** switch.
-- A **Boost** switch for the unit's turbo setting.
+- A **Boost** switch for the unit's turbo setting and an **Eco mode** switch on supported units.
 - A local room label, shared with the CLI.
 
 Supported controls come from the unit's capabilities. Units with custom fan control accept whole percentages from 1–100; units with fixed speeds accept only the percentages they report. The fan slider is greyed out while Automatic fan or Boost is active. Switching Automatic fan off restores the previous manual speed; selecting a fan setting also turns Boost off. Commands are followed by a status read to confirm the result.
@@ -76,6 +76,8 @@ ac-man 1 fan 37
 ac-man 1 fan auto
 ac-man 1 boost on
 ac-man 1 boost off
+ac-man 1 eco on
+ac-man 1 eco off
 ac-man 1 swing vertical
 ac-man 1 vertical-angle 2
 ac-man 1 horizontal-angle 3
@@ -99,7 +101,8 @@ Labels match without regard to case; quote labels containing spaces. A label or 
 | `swing` | `off`, `horizontal`, `vertical`, `both` |
 | `vertical-angle`, `horizontal-angle` | `off`, or position `1`–`5` on supported units (not degrees) |
 | `boost` | `on`, `off` |
-| `set` | Combine `--power`, `--temperature`, `--mode`, `--fan`, `--swing`, `--boost`, `--vertical-angle`, `--horizontal-angle` |
+| `eco` | `on`, `off` (supported units) |
+| `set` | Combine `--power`, `--temperature`, `--mode`, `--fan`, `--swing`, `--boost`, `--eco`, `--vertical-angle`, `--horizontal-angle` |
 | `rename` | New local label, up to 60 characters |
 | `id` | New unique positive integer |
 

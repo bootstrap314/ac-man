@@ -53,8 +53,10 @@ pub struct DeviceSnapshot {
     pub vertical_angles: Vec<Choice>,
     pub horizontal_angles: Vec<Choice>,
     pub boost: bool,
+    pub eco: bool,
     pub custom_fan: bool,
     pub supports_boost: bool,
+    pub supports_eco: bool,
     pub min_temperature: f64,
     pub max_temperature: f64,
     pub modes: Vec<Choice>,
@@ -79,6 +81,7 @@ pub struct SettingsChange {
     pub fan: Option<i32>,
     pub swing: Option<i32>,
     pub boost: Option<bool>,
+    pub eco: Option<bool>,
     pub vertical_angle: Option<i32>,
     pub horizontal_angle: Option<i32>,
 }

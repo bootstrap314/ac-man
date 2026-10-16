@@ -89,6 +89,11 @@ enum DeviceCommand {
         #[arg(value_enum)]
         value: Toggle,
     },
+    /// Enable or disable Eco mode.
+    Eco {
+        #[arg(value_enum)]
+        value: Toggle,
+    },
     /// Change several settings in one confirmed command.
     Set(SetOptions),
     /// Change the room name on this computer.
@@ -159,6 +164,8 @@ struct SetOptions {
     swing: Option<Swing>,
     #[arg(long, value_enum)]
     boost: Option<Toggle>,
+    #[arg(long, value_enum)]
+    eco: Option<Toggle>,
     #[arg(long, help = "Vertical vent position: off or 1–5 (not degrees)")]
     vertical_angle: Option<String>,
     #[arg(long, help = "Horizontal vent position: off or 1–5 (not degrees)")]
@@ -200,6 +207,7 @@ fn change(command: DeviceCommand) -> Result<SettingsChange> {
         DeviceCommand::VerticalAngle { value } => c.vertical_angle = Some(angle_value(&value)?),
         DeviceCommand::HorizontalAngle { value } => c.horizontal_angle = Some(angle_value(&value)?),
         DeviceCommand::Boost { value } => c.boost = Some(value.enabled()),
+        DeviceCommand::Eco { value } => c.eco = Some(value.enabled()),
         DeviceCommand::Set(o) => {
             c.power = o.power.map(|v| v.enabled());
             c.temperature = o.temperature;
@@ -207,6 +215,7 @@ fn change(command: DeviceCommand) -> Result<SettingsChange> {
             c.fan = o.fan.map(|v| fan_value(&v)).transpose()?;
             c.swing = o.swing.map(|v| v.value());
             c.boost = o.boost.map(|v| v.enabled());
+            c.eco = o.eco.map(|v| v.enabled());
             c.vertical_angle = o.vertical_angle.map(|v| angle_value(&v)).transpose()?;
             c.horizontal_angle = o.horizontal_angle.map(|v| angle_value(&v)).transpose()?;
         }
@@ -227,6 +236,7 @@ fn change(command: DeviceCommand) -> Result<SettingsChange> {
         && c.vertical_angle.is_none()
         && c.horizontal_angle.is_none()
         && c.boost.is_none()
+        && c.eco.is_none()
     {
         return Err(problem(
             "Provide at least one setting, such as --temperature 23.",
@@ -299,6 +309,9 @@ fn print_device(d: &DeviceSnapshot, json: bool) -> Result<()> {
         name(SWING_NAMES, d.swing),
         if d.boost { "On" } else { "Off" }
     );
+    if d.supports_eco {
+        println!("Eco: {}", if d.eco { "On" } else { "Off" });
+    }
     for (label, value, options) in [
         ("Vertical vent", d.vertical_angle, &d.vertical_angles),
         ("Horizontal vent", d.horizontal_angle, &d.horizontal_angles),
@@ -463,6 +476,19 @@ mod tests {
         assert_eq!(c.fan, Some(102));
         assert_eq!(c.temperature, Some(23.5));
         assert_eq!(c.boost, Some(false));
+    }
+    #[test]
+    fn eco_commands_parse_on_off_and_combined_settings() {
+        for (value, enabled) in [("on", true), ("off", false)] {
+            for args in [
+                vec!["ac-man <DEVICE>", "eco", value],
+                vec!["ac-man <DEVICE>", "set", "--eco", value],
+            ] {
+                let command = DeviceCli::try_parse_from(args).unwrap().command;
+                assert_eq!(change(command).unwrap().eco, Some(enabled));
+            }
+        }
+        assert!(DeviceCli::try_parse_from(["ac-man <DEVICE>", "eco", "maybe"]).is_err());
     }
     #[test]
     fn login_never_accepts_password_argument() {

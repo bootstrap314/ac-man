@@ -51,6 +51,46 @@ mod tests {
         assert_eq!(state.encode(1), fixture("set_from_state"));
     }
     #[test]
+    fn eco_capabilities_commands_and_readback() {
+        // msmart-ng PRESET_ECO (0x0212) supports values 1 and 2.
+        for value in [0, 1, 2, 3, 255] {
+            let caps =
+                Capabilities::decode(&frame(3, vec![0xb5, 1, 0x12, 2, 1, value], 1)).unwrap();
+            assert_eq!(caps.eco, matches!(value, 1 | 2));
+            for enabled in [true, false] {
+                let change = SettingsChange {
+                    eco: Some(enabled),
+                    ..Default::default()
+                };
+                let mut state = State::decode(&fixture("state_response")).unwrap();
+                if !caps.eco {
+                    assert!(state.apply(&change, &caps).is_err());
+                    continue;
+                }
+                state.apply(&change, &caps).unwrap();
+                assert_eq!(payload(&state.encode(1)).unwrap()[9] & 0x80 != 0, enabled);
+                // Status uses bit 0x10, unlike the command's 0x80.
+                let mut response = payload(&fixture("state_response")).unwrap().to_vec();
+                response[9] = (response[9] & !0x10) | if enabled { 0x10 } else { 0 };
+                let actual = State::decode(&frame(3, response, 1)).unwrap();
+                assert!(actual.matches(&change));
+                assert!(!actual.matches(&SettingsChange {
+                    eco: Some(!enabled),
+                    ..Default::default()
+                }));
+            }
+        }
+        let caps = Capabilities::decode(&fixture("capabilities_response")).unwrap();
+        assert!(!caps.eco);
+        assert!(
+            caps.validate(&SettingsChange {
+                eco: Some(true),
+                ..Default::default()
+            })
+            .is_err()
+        );
+    }
+    #[test]
     fn additional_capabilities_remain_pending_until_merged() {
         let mut caps = Capabilities::decode(&frame(3, vec![0xb5, 1, 0x10, 2, 1, 1, 1], 1)).unwrap();
         assert!(caps.additional);
@@ -252,7 +292,7 @@ pub struct State {
     pub boost: bool,
     pub indoor: Option<f64>,
     pub outdoor: Option<f64>,
-    eco: bool,
+    pub eco: bool,
     sleep: bool,
     fahrenheit: bool,
     purifier: bool,
@@ -366,6 +406,9 @@ impl State {
         if let Some(v) = change.boost {
             self.boost = v;
         }
+        if let Some(v) = change.eco {
+            self.eco = v;
+        }
         Ok(())
     }
     pub fn matches(&self, c: &SettingsChange) -> bool {
@@ -380,6 +423,7 @@ impl State {
             && c.horizontal_angle
                 .is_none_or(|v| Some(v) == self.horizontal_angle)
             && c.boost.is_none_or(|v| v == self.boost)
+            && c.eco.is_none_or(|v| v == self.eco)
     }
 }
 
@@ -394,6 +438,7 @@ pub struct Capabilities {
     pub horizontal_angle: bool,
     pub custom_fan: bool,
     pub boost: bool,
+    pub eco: bool,
     pub min_temp: f64,
     pub max_temp: f64,
 }
@@ -431,6 +476,7 @@ impl Capabilities {
             horizontal_angle: false,
             custom_fan: false,
             boost: false,
+            eco: false,
             min_temp: 16.0,
             max_temp: 30.0,
         };
@@ -505,6 +551,7 @@ impl Capabilities {
         if self.custom_fan {
             self.fans.push(100);
         }
+        self.eco = self.value(0x212).is_some_and(|v| [1, 2].contains(&v));
         self.boost = self.value(0x21a).is_some_and(|v| [0, 1, 3].contains(&v));
         if let Some(t) = self.raw.get(&0x225).filter(|t| t.len() >= 6) {
             self.min_temp = f64::from(*[t[0], t[2], t[4]].iter().min().unwrap()) / 2.0;
@@ -520,6 +567,7 @@ impl Capabilities {
             && c.vertical_angle.is_none()
             && c.horizontal_angle.is_none()
             && c.boost.is_none()
+            && c.eco.is_none()
         {
             return Err(problem("Choose at least one setting."));
         }
@@ -551,6 +599,9 @@ impl Capabilities {
             if value.is_some_and(|v| !supported || ![0, 1, 25, 50, 75, 100].contains(&v)) {
                 return Err(problem("This AC does not support that vent position."));
             }
+        }
+        if c.eco.is_some() && !self.eco {
+            return Err(problem("This AC does not support Eco mode."));
         }
         if c.boost.is_some() && !self.boost {
             return Err(problem("This AC does not support Boost."));
