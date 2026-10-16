@@ -1,0 +1,38 @@
+name: Attach existing container provenance
+on:
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: Published ac-man SHA-256 manifest digest
+        required: true
+        type: string
+permissions:
+  contents: read
+  attestations: read
+  packages: write
+jobs:
+  attach:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Verify and attach the existing signed bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ inputs.digest }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" ]]
+          [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          image="ghcr.io/${GITHUB_REPOSITORY,,}@$DIGEST"
+          cd "$RUNNER_TEMP"
+          gh api "repos/$GITHUB_REPOSITORY/attestations/$DIGEST" --jq '.attestations[0].bundle' > bundle.json
+          # Verify the original signature and subject; do not manufacture new provenance.
+          gh attestation verify "oci://$image" --repo "$GITHUB_REPOSITORY" --bundle bundle.json
+          printf '%s' "$GH_TOKEN" | go run oras.land/oras/cmd/oras@v1.3.0 attach \
+            --username "$GITHUB_ACTOR" --password-stdin \
+            --artifact-type application/vnd.dev.sigstore.bundle.v0.3+json \
+            --annotation dev.sigstore.bundle.content=dsse-envelope \
+            --annotation dev.sigstore.bundle.predicateType=https://slsa.dev/provenance/v1 \
+            "$image" bundle.json:application/vnd.dev.sigstore.bundle.v0.3+json
