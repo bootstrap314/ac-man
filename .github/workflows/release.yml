@@ -209,6 +209,9 @@ jobs:
     permissions:
       actions: read
       packages: write
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -216,6 +219,7 @@ jobs:
           path: incoming-containers
           merge-multiple: true
       - name: Validate images and publish the platform manifest
+        id: package
         env:
           GHCR_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
@@ -249,11 +253,39 @@ jobs:
             refs+=("$digest")
           done
           docker manifest create "$image:$RELEASE_TAG" "${refs[@]}"
-          docker manifest push "$image:$RELEASE_TAG"
-          docker manifest inspect "$image:$RELEASE_TAG" | jq --exit-status \
+          docker manifest push "$image:$RELEASE_TAG" | tee "$RUNNER_TEMP/manifest-push.txt"
+          manifest_digest=$(tail -n 1 "$RUNNER_TEMP/manifest-push.txt")
+          [[ "$manifest_digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf 'image=%s\ndigest=%s\n' "$image" "$manifest_digest" >> "$GITHUB_OUTPUT"
+          docker manifest inspect "$image@$manifest_digest" | jq --exit-status \
             '[.manifests[].platform | .os + "/" + .architecture] | sort == ["linux/amd64", "linux/arm64"]'
           printf '### CLI container package\n\n`docker pull %s:%s`\n\nPlatforms: Linux amd64 and arm64.\n' \
             "$image" "$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
+          printf '\nImmutable image: `%s@%s`\n' "$image" "$manifest_digest" >> "$GITHUB_STEP_SUMMARY"
+
+
+      - name: Authenticate to attach provenance
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          DOCKER_CONFIG: ${{ runner.temp }}/attestation-docker-config
+        run: |
+          mkdir -m 700 "$DOCKER_CONFIG"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Attest the published multi-architecture digest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/attestation-docker-config
+        with:
+          subject-name: ${{ steps.package.outputs.image }}
+          subject-digest: ${{ steps.package.outputs.digest }}
+          push-to-registry: true
+      - name: Remove attestation registry credentials
+        if: always()
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/attestation-docker-config
+        run: |
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          rm -rf -- "$DOCKER_CONFIG"
 
   sign-app:
     name: Sign and notarize macOS application

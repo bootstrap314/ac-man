@@ -33,3 +33,15 @@ If package publication fails after the GitHub release is created, rerun the fail
 The first GHCR package is private by default, even for a public repository. After the first successful publish, a repository/package administrator must open **Packages → ac-man → Package settings → Change visibility → Public** to allow anonymous pulls. The image's source label links the package to this repository. If a package with that name already exists, grant this repository Actions access to it. No personal access token is needed for publishing from this workflow.
 
 References: [GitHub Container registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry), [Docker manifest commands](https://docs.docker.com/reference/cli/docker/manifest/).
+
+## Verify build provenance
+
+The release publisher uses `actions/attest` to sign the exact multi-architecture manifest digest with a short-lived Sigstore certificate. The attestation is recorded in GitHub's Attestations page and attached to the image in GHCR. It identifies the trusted release workflow; the selected source commit is also recorded in each platform image's `org.opencontainers.image.revision` label. This uses GitHub Actions identity, not a personal GPG private key.
+
+After publication, verify the image with GitHub CLI (replace the digest with the published SHA-256 digest):
+
+```sh
+gh attestation verify oci://ghcr.io/bootstrap314/ac-man@sha256:DIGEST --repo bootstrap314/ac-man
+```
+
+Attestation failures fail the package job, even if the image has already been pushed. Rerun the failed job to complete publication and attestation.
