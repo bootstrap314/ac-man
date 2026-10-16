@@ -21,6 +21,13 @@ final class ControlWindow: NSWindow {
 
 @MainActor
 final class FanSlider: NSSlider {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        cell = FanSliderCell()
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override var mouseDownCanMoveWindow: Bool { false }
+
     private(set) var isDragging = false
     var onCommit: (() -> Void)?
     override func mouseDown(with event: NSEvent) {
@@ -460,8 +467,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if !fan.isDragging {
                 if (1...100).contains(Int(speed)) && !boostOn { manualSpeeds[d.id] = Int(speed) }
                 fan.minValue = Double(fanSteps.first ?? 1); fan.maxValue = Double(fanSteps.last ?? 100)
-                fan.doubleValue = Double(speed == 102 ? (manualSpeeds[d.id] ?? 50) : Int(speed))
-                fanPercent.stringValue = boostOn ? "Boost" : (speed == 102 ? "Auto" : "\(speed)%")
+                fan.doubleValue = FanSpeedDisplay.sliderValue(speed, lastManual: manualSpeeds[d.id])
+                fanPercent.stringValue = FanSpeedDisplay.label(speed, boost: boostOn)
                 autoFan.state = speed == 102 ? .on : .off
                 fan.setAccessibilityValueDescription(fanPercent.stringValue)
             }
@@ -607,14 +614,15 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return fanSteps.min { abs($0 - value) < abs($1 - value) } ?? min(100, max(1, value))
     }
     @objc private func previewFan() {
-        let value = fanPercentage(); fan.doubleValue = Double(value)
+        let value = fanPercentage()
+        if !fan.isDragging { fan.doubleValue = Double(value) }
         fanPercent.stringValue = "\(value)%"; autoFan.state = .off
         fan.setAccessibilityValueDescription("\(value) percent")
         if !fan.isDragging { commitFan() }
     }
     private func commitFan() {
         guard fan.isEnabled, let d = selected else { return }
-        let value = fanPercentage(); manualSpeeds[d.id] = value
+        let value = fanPercentage(); fan.doubleValue = Double(value); manualSpeeds[d.id] = value
         if (pending[d.id]?.fan ?? d.fan) != value { change(fan: Int32(value)) }
     }
 

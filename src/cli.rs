@@ -244,6 +244,13 @@ fn change(command: DeviceCommand) -> Result<SettingsChange> {
     }
     Ok(c)
 }
+fn fan_label(speed: i32) -> String {
+    match speed {
+        0..=100 => format!("{speed}%"),
+        102 => "Auto".into(),
+        _ => "Unknown".into(),
+    }
+}
 fn clean(text: &str) -> String {
     text.chars().filter(|c| !c.is_control()).collect()
 }
@@ -261,11 +268,7 @@ fn print_devices(snapshot: &AppSnapshot, json: bool) -> Result<()> {
                     "{} · {}°C · Fan {}{}",
                     if d.power { "On" } else { "Off" },
                     d.temperature.map_or("—".into(), |v| v.to_string()),
-                    if d.fan == 102 {
-                        "Auto".into()
-                    } else {
-                        format!("{}%", d.fan)
-                    },
+                    fan_label(d.fan),
                     if d.boost { " · Boost" } else { "" }
                 )
             } else if !d.error.is_empty() {
@@ -301,11 +304,7 @@ fn print_device(d: &DeviceSnapshot, json: bool) -> Result<()> {
         d.temperature.map_or("—".into(), |v| v.to_string()),
         d.indoor.map_or("—".into(), |v| v.to_string()),
         name(MODE_NAMES, d.mode),
-        if d.fan == 102 {
-            "Auto".into()
-        } else {
-            format!("{}%", d.fan)
-        },
+        fan_label(d.fan),
         name(SWING_NAMES, d.swing),
         if d.boost { "On" } else { "Off" }
     );
@@ -538,6 +537,15 @@ mod tests {
         let args = DeviceCli::try_parse_from(["ac-man <DEVICE>", "set", "--horizontal-angle", "3"])
             .unwrap();
         assert_eq!(change(args.command).unwrap().horizontal_angle, Some(50));
+    }
+    #[test]
+    fn reserved_fan_codes_are_not_percentages() {
+        for code in [101, 103, 127, -1] {
+            assert_eq!(fan_label(code), "Unknown");
+        }
+        assert_eq!(fan_label(102), "Auto");
+        assert_eq!(fan_label(100), "100%");
+        assert_eq!(fan_label(0), "0%");
     }
     #[test]
     fn terminal_labels_are_sanitized() {
