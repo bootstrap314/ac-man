@@ -43,6 +43,7 @@ security-framework = "3"
 keyring = { version = "3.6.3", features = ["sync-secret-service", "crypto-rust", "vendored"] }
 
 [dev-dependencies]
+http = "1"
 tempfile = "3"
 
 [profile.release]

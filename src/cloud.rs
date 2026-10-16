@@ -112,6 +112,8 @@ pub(crate) struct DiscoveredDevice {
     pub mac: String,
 }
 pub(crate) struct CloudClient {
+    #[cfg(test)]
+    mock: Option<tests::MockTransport>,
     normal: Client,
     wifi: Option<Client>,
     pub route: String,
@@ -135,6 +137,8 @@ impl CloudClient {
         #[cfg(not(target_os = "macos"))]
         let wifi = None;
         Ok(Self {
+            #[cfg(test)]
+            mock: None,
             normal,
             wifi,
             route: "Default internet connection".into(),
@@ -189,16 +193,29 @@ impl CloudClient {
             r
         };
         self.route = "Default internet connection".into();
-        let mut response = match request(&self.normal).send().await {
-            Err(e) if e.is_connect() && self.wifi.is_some() => {
-                self.route = "Wi-Fi internet".into();
-                request(self.wifi.as_ref().unwrap()).send().await
+        #[cfg(test)]
+        let mocked = self.mock.as_mut().map(|mock| {
+            mock.requests.push(request(&self.normal).build().unwrap());
+            mock.responses
+                .pop_front()
+                .expect("Unexpected cloud request: mock exhausted")
+        });
+        #[cfg(not(test))]
+        let mocked: Option<reqwest::Response> = None;
+        let mut response = if let Some(response) = mocked {
+            response
+        } else {
+            match request(&self.normal).send().await {
+                Err(e) if e.is_connect() && self.wifi.is_some() => {
+                    self.route = "Wi-Fi internet".into();
+                    request(self.wifi.as_ref().unwrap()).send().await
+                }
+                other => other,
             }
-            other => other,
-        }
-        .map_err(|_| {
-            problem("Cannot reach SmartHome. Check your internet connection and try again.")
-        })?;
+            .map_err(|_| {
+                problem("Cannot reach SmartHome. Check your internet connection and try again.")
+            })?
+        };
         if !response.status().is_success() {
             return Err(problem(format!(
                 "SmartHome returned HTTP {}.",
@@ -221,8 +238,9 @@ impl CloudClient {
         let code = response
             .get("code")
             .and_then(|c| c.as_i64().or_else(|| c.as_str()?.parse().ok()))
-            .ok_or_else(|| problem("SmartHome response is missing its result code."))?
-            as i32;
+            .ok_or_else(|| problem("SmartHome response is missing its result code."))?;
+        let code = i32::try_from(code)
+            .map_err(|_| problem("SmartHome returned an invalid result code."))?;
         if code != 0 {
             let message = match code {
                 65027 => "The account has reached its signed-in device limit.",
@@ -369,7 +387,10 @@ impl CloudClient {
 }
 
 #[cfg(test)]
-mod tests {
+mod tests;
+
+#[cfg(test)]
+mod crypto_tests {
     use super::*;
     #[test]
     fn credential_destinations_are_restricted() {
