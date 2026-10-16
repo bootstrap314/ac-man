@@ -81,9 +81,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let boost = NSSwitch()
     private let eco = NSSwitch()
     private let fanNote = NSTextField(wrappingLabelWithString: "")
-    private let swing = NSPopUpButton()
-    private let verticalAngle = NSPopUpButton()
-    private let horizontalAngle = NSPopUpButton()
+    private let swing = NSSegmentedControl()
+    private var swingChoices: [Choice] = []
+    private let verticalAngle = VentPositionControl(axis: .vertical)
+    private let horizontalAngle = VentPositionControl(axis: .horizontal)
     private var verticalAngleRow: NSStackView?
     private var horizontalAngleRow: NSStackView?
     private let footer = NSTextField(wrappingLabelWithString: "")
@@ -427,13 +428,24 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         full(fanNote, in: contents); fanNote.heightAnchor.constraint(equalToConstant: 30).isActive = true
         let fanDivider = NSBox(); fanDivider.boxType = .separator
         full(fanDivider, in: contents)
-        configure(swing, #selector(setSwing)); row("Swing", swing, in: contents)
+        let airflow = NSTextField(labelWithString: "Airflow")
+        airflow.font = .systemFont(ofSize: 11, weight: .medium); airflow.textColor = .secondaryLabelColor
+        full(airflow, in: contents)
+        func airflowSetting(_ title: String, control: NSControl) -> NSStackView {
+            let label = NSTextField(labelWithString: title); label.font = .systemFont(ofSize: 13, weight: .medium)
+            let group = NSStackView(); group.orientation = .vertical; group.alignment = .leading; group.spacing = 6
+            full(label, in: group); full(control, in: group); full(group, in: contents)
+            return group
+        }
+        configure(swing, #selector(setSwing)); swing.segmentStyle = .rounded
+        swing.segmentDistribution = .fillEqually; swing.trackingMode = .selectOne
+        swing.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        swing.setAccessibilityLabel("Swing")
+        _ = airflowSetting("Swing", control: swing)
         configure(verticalAngle, #selector(setVerticalAngle))
-        verticalAngle.setAccessibilityLabel("Vertical vent position")
-        verticalAngleRow = row("Vertical vent", verticalAngle, in: contents)
+        verticalAngleRow = airflowSetting("Vertical vent", control: verticalAngle)
         configure(horizontalAngle, #selector(setHorizontalAngle))
-        horizontalAngle.setAccessibilityLabel("Horizontal vent position")
-        horizontalAngleRow = row("Horizontal vent", horizontalAngle, in: contents)
+        horizontalAngleRow = airflowSetting("Horizontal vent", control: horizontalAngle)
         footer.font = .systemFont(ofSize: 11); footer.textColor = .secondaryLabelColor
         footer.heightAnchor.constraint(equalToConstant: 42).isActive = true
         full(footer, in: contents)
@@ -475,7 +487,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             modeSegments.selectedSegment = d.modes.firstIndex { $0.value == (change?.mode ?? d.mode) } ?? -1
             let compactModes = (1...4).contains(d.modes.count)
             modeRow?.isHidden = compactModes; modeSegments.isHidden = !compactModes
-            updatePicker(swing, choices: d.swings, value: change?.swing ?? d.swing)
+            if swingChoices != d.swings {
+                swingChoices = d.swings; swing.segmentCount = d.swings.count
+                for (index, choice) in d.swings.enumerated() { swing.setLabel(choice.name, forSegment: index) }
+            }
+            swing.selectedSegment = d.swings.firstIndex { $0.value == (change?.swing ?? d.swing) } ?? -1
             updateAnglePicker(verticalAngle, choices: d.verticalAngles, value: change?.verticalAngle ?? d.verticalAngle)
             updateAnglePicker(horizontalAngle, choices: d.horizontalAngles, value: change?.horizontalAngle ?? d.horizontalAngle)
             fanSteps = d.customFan ? Array(1...100) : d.fans.map { Int($0.value) }.filter { (1...100).contains($0) }.sorted()
@@ -531,11 +547,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         picker.selectItem(withTag: Int(value))
     }
 
-    private func updateAnglePicker(_ picker: NSPopUpButton, choices: [Choice], value: Int32?) {
-        // A supported vent may not have reported its position yet; don't imply it is off.
-        let available = value == nil ? [Choice(value: -1, name: "Unknown")] + choices : choices
-        updatePicker(picker, choices: available, value: value ?? -1)
-        picker.menu?.item(withTag: -1)?.isEnabled = false
+    private func updateAnglePicker(_ picker: VentPositionControl, choices: [Choice], value: Int32?) {
+        picker.update(values: choices.map { $0.value }, selected: value)
     }
 
     private func merging(_ older: SettingsChange?, _ newer: SettingsChange) -> SettingsChange {
@@ -614,9 +627,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         change(mode: modeChoices[modeSegments.selectedSegment].value)
     }
     @objc private func setMode() { change(mode: Int32(mode.selectedTag())) }
-    @objc private func setSwing() { change(swing: Int32(swing.selectedTag())) }
-    @objc private func setVerticalAngle() { change(verticalAngle: Int32(verticalAngle.selectedTag())) }
-    @objc private func setHorizontalAngle() { change(horizontalAngle: Int32(horizontalAngle.selectedTag())) }
+    @objc private func setSwing() {
+        guard swingChoices.indices.contains(swing.selectedSegment) else { return }
+        change(swing: swingChoices[swing.selectedSegment].value)
+    }
+    @objc private func setVerticalAngle() { change(verticalAngle: verticalAngle.selectedValue) }
+    @objc private func setHorizontalAngle() { change(horizontalAngle: horizontalAngle.selectedValue) }
     private func manualFanSelection() -> Int32? {
         guard let d = selected else { return nil }
         let remembered = manualSpeeds[d.id] ?? fanPercentage()

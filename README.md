@@ -36,7 +36,7 @@ Light and dark appearances, rendered from the native controls with example room 
 Open **ac-man.app**, then click its air-conditioner icon in the menu bar. Sign in and choose a discovered AC to see its status and controls:
 
 - Power, target temperature in Celsius, operating mode, and swing.
-- Vertical and horizontal vent positions on units that advertise support.
+- Visual vertical and horizontal vent position buttons on units that advertise support, plus a segmented Swing selector.
 - Fan speed as a percentage slider, with an **Automatic fan** switch.
 - A **Boost** switch for the unit's turbo setting and an **Eco mode** switch on supported units.
 - A local room label, shared with the CLI.
@@ -206,7 +206,11 @@ The runtime does not start a desktop keyring or D-Bus service, so it is mainly u
 
 ## GitHub Actions and manual releases
 
-**Tests and security** runs on pull requests and can also be started manually. It checks Rust formatting, Clippy, tests, CLI builds on Linux x86_64 and macOS arm64/Intel, the Apple Silicon Swift app build, Cargo Audit, Trivy source scans, and the built runtime image. The workflow also serves as the release verification gate.
+**Tests and security** runs on pull requests and pushes to main, and can also be started manually. It checks Rust formatting, Clippy, tests, CLI builds on Linux x86_64 and macOS arm64/Intel, the Apple Silicon Swift app build, Cargo Audit, Trivy source scans, and the built runtime image. The workflow also serves as the release verification gate.
+
+Native macOS control tests (no AC commands): `make test-native`.
+
+Trivy source and container scans publish separate SARIF analyses to GitHub **Security → Code scanning** for main and same-repository PRs. Reports are also saved as workflow artifacts, including fork PRs and release checks. High/Critical findings still fail CI; RustSec checks run with `cargo audit`. Trivy covers dependencies, secrets, and configuration rather than general application-code data-flow analysis.
 
 **Release selected tag** runs only through `workflow_dispatch`; pushing a tag does not publish a release. First follow the [macOS signing setup](docs/macos-release.md) to configure the `macos-release` GitHub environment with your Apple certificate and notarization credentials. The workflow refuses to publish if signing or notarization fails. To release:
 

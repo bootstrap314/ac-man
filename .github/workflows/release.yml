@@ -68,6 +68,8 @@ jobs:
       release_tag: ${{ needs.resolve.outputs.tag }}
     permissions:
       contents: read
+      actions: read
+      security-events: write
 
   cli:
     name: Package CLI (${{ matrix.target }})
