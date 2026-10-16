@@ -185,6 +185,8 @@ make licenses
 
 ## Docker CLI build
 
+Releases also publish a Linux amd64/arm64 CLI image to `ghcr.io/bootstrap314/ac-man:<release-tag>`. See [container packages](docs/container.md) for usage, authentication requirements, and first-publication setup.
+
 Docker provides a pinned Linux build environment. Exporting the CLI is the primary container workflow:
 
 ```sh
@@ -205,6 +207,8 @@ make trivy-image
 The runtime does not start a desktop keyring or D-Bus service, so it is mainly useful for help and local operations. Use the exported CLI in your Linux user session for normal saved-login operation. Never put account credentials in an image or its build arguments.
 
 ## GitHub Actions and manual releases
+
+**Scheduled security scans** runs independently every Sunday at midnight GMT (00:00 UTC, with no daylight-saving changes) via cron, and supports **Run workflow**. It checks Cargo.lock against a freshly fetched RustSec database and runs Trivy against source and the runtime container with current vulnerability definitions. Database download failures fail the run; no advisory cache is restored. Trivy reports appear under **Security → Code scanning** and remain downloadable even when findings fail the scan. This schedule takes effect once the workflow is on the default branch; GitHub can delay scheduled runs and disables schedules in public repositories after 60 days without repository activity.
 
 **Tests and security** runs on pull requests and pushes to main, and can also be started manually. It checks Rust formatting, Clippy, tests, CLI builds on Linux x86_64 and macOS arm64/Intel, the Apple Silicon Swift app build, Cargo Audit, Trivy source scans, and the built runtime image. The workflow also serves as the release verification gate.
 
