@@ -36,12 +36,12 @@ Light and dark appearances, rendered from the native controls with example room 
 Open **ac-man.app**, then click its air-conditioner icon in the menu bar. Sign in and choose a discovered AC to see its status and controls:
 
 - Power, target temperature in Celsius, operating mode, and swing.
-- Vertical and horizontal vent positions on units that advertise support.
+- Visual vertical and horizontal vent position buttons on units that advertise support, plus a segmented Swing selector.
 - Fan speed as a percentage slider, with an **Automatic fan** switch.
-- A **Boost** switch for the unit's turbo setting.
+- A **Boost** switch for the unit's turbo setting and an **Eco mode** switch on supported units.
 - A local room label, shared with the CLI.
 
-Supported controls come from the unit's capabilities. Units with custom fan control accept whole percentages from 1–100; units with fixed speeds accept only the percentages they report. The fan slider is greyed out while Automatic fan or Boost is active. Switching Automatic fan off restores the previous manual speed; selecting a fan setting also turns Boost off. Commands are followed by a status read to confirm the result.
+Supported controls come from the unit's capabilities. Units with custom fan control accept whole percentages from 1–100; units with fixed speeds accept only the percentages they report. The fan slider is greyed out while Automatic fan or Boost is active. Automatic fan, Boost, and Eco are mutually exclusive in the menu-bar app: turning one on clears the other two in the same request. Turning a toggle off does not activate another. Selecting Boost or Eco restores a supported manual fan setting. Commands are followed by a status read to confirm the result.
 
 The Swift interface awaits Rust operations asynchronously. Network requests do not run on the UI thread. The current app build targets Apple Silicon Macs running macOS 13 or later; CLI release packages also support Intel Macs and Linux x86_64. Local builds are ad hoc signed. The release workflow signs the app with Developer ID, notarizes it with Apple, and staples the ticket before publishing.
 
@@ -76,6 +76,8 @@ ac-man 1 fan 37
 ac-man 1 fan auto
 ac-man 1 boost on
 ac-man 1 boost off
+ac-man 1 eco on
+ac-man 1 eco off
 ac-man 1 swing vertical
 ac-man 1 vertical-angle 2
 ac-man 1 horizontal-angle 3
@@ -99,7 +101,8 @@ Labels match without regard to case; quote labels containing spaces. A label or 
 | `swing` | `off`, `horizontal`, `vertical`, `both` |
 | `vertical-angle`, `horizontal-angle` | `off`, or position `1`–`5` on supported units (not degrees) |
 | `boost` | `on`, `off` |
-| `set` | Combine `--power`, `--temperature`, `--mode`, `--fan`, `--swing`, `--boost`, `--vertical-angle`, `--horizontal-angle` |
+| `eco` | `on`, `off` (supported units) |
+| `set` | Combine `--power`, `--temperature`, `--mode`, `--fan`, `--swing`, `--boost`, `--eco`, `--vertical-angle`, `--horizontal-angle` |
 | `rename` | New local label, up to 60 characters |
 | `id` | New unique positive integer |
 
@@ -182,6 +185,8 @@ make licenses
 
 ## Docker CLI build
 
+Releases also publish a Linux amd64/arm64 CLI image to `ghcr.io/bootstrap314/ac-man:<release-tag>`. See [container packages](docs/container.md) for usage, authentication requirements, and first-publication setup.
+
 Docker provides a pinned Linux build environment. Exporting the CLI is the primary container workflow:
 
 ```sh
@@ -203,7 +208,15 @@ The runtime does not start a desktop keyring or D-Bus service, so it is mainly u
 
 ## GitHub Actions and manual releases
 
-**Tests and security** runs on pull requests and can also be started manually. It checks Rust formatting, Clippy, tests, CLI builds on Linux x86_64 and macOS arm64/Intel, the Apple Silicon Swift app build, Cargo Audit, Trivy source scans, and the built runtime image. The workflow also serves as the release verification gate.
+**Scheduled security scans** runs independently every Sunday at midnight GMT (00:00 UTC, with no daylight-saving changes) via cron, and supports **Run workflow**. It checks Cargo.lock against a freshly fetched RustSec database and runs Trivy against source and the runtime container with current vulnerability definitions. Database download failures fail the run; no advisory cache is restored. Trivy reports appear under **Security → Code scanning** and remain downloadable even when findings fail the scan. This schedule takes effect once the workflow is on the default branch; GitHub can delay scheduled runs and disables schedules in public repositories after 60 days without repository activity.
+
+**Tests and security** runs on pull requests and pushes to main, and can also be started manually. It checks Rust formatting, Clippy, tests, CLI builds on Linux x86_64 and macOS arm64/Intel, the Apple Silicon Swift app build, Cargo Audit, Trivy source scans, and the built runtime image. The workflow also serves as the release verification gate.
+
+The Ubuntu test job builds and smoke-tests the distroless Linux runtime once, then passes that exact image to the security job for scanning. Pinned audit tools are cached separately from vulnerability databases; scans still fetch current advisories. The independent scheduled workflow builds its own image.
+
+Native macOS control tests (no AC commands): `make test-native`.
+
+Trivy source and container scans publish separate SARIF analyses to GitHub **Security → Code scanning** for main and same-repository PRs. Reports are also saved as workflow artifacts, including fork PRs and release checks. High/Critical findings still fail CI; RustSec checks run with `cargo audit`. Trivy covers dependencies, secrets, and configuration rather than general application-code data-flow analysis.
 
 **Release selected tag** runs only through `workflow_dispatch`; pushing a tag does not publish a release. First follow the [macOS signing setup](docs/macos-release.md) to configure the `macos-release` GitHub environment with your Apple certificate and notarization credentials. The workflow refuses to publish if signing or notarization fails. To release:
 

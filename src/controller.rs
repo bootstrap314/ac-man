@@ -180,7 +180,7 @@ impl AcController {
         let caps=s.caps.get(&record.cloud_id).ok_or_else(||problem("Read this AC's supported settings before changing it."))?;
         state.apply(&change,caps)?;
         let regular = change.power.is_some() || change.temperature.is_some() || change.mode.is_some()
-            || change.fan.is_some() || change.swing.is_some() || change.boost.is_some();
+            || change.fan.is_some() || change.swing.is_some() || change.boost.is_some() || change.eco.is_some();
         let frame=regular.then(|| state.encode(s.next_sequence()));
         let angles=protocol::angle_command(&change,s.next_sequence());
         // Never automatically retry a write: a lost acknowledgement may still mean it applied.
@@ -456,8 +456,10 @@ impl Inner {
                     vec![]
                 },
                 boost: state.is_some_and(|s| s.boost),
+                eco: state.is_some_and(|s| s.eco),
                 custom_fan: caps.is_some_and(|c| c.custom_fan),
                 supports_boost: caps.is_some_and(|c| c.boost),
+                supports_eco: caps.is_some_and(|c| c.eco),
                 min_temperature: caps.map_or(16.0, |c| c.min_temp),
                 max_temperature: caps.map_or(30.0, |c| c.max_temp),
                 modes: choices(caps.map_or(&[], |c| c.modes.as_slice()), MODE_NAMES),

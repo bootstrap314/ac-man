@@ -21,6 +21,13 @@ final class ControlWindow: NSWindow {
 
 @MainActor
 final class FanSlider: NSSlider {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        cell = FanSliderCell()
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override var mouseDownCanMoveWindow: Bool { false }
+
     private(set) var isDragging = false
     var onCommit: (() -> Void)?
     override func mouseDown(with event: NSEvent) {
@@ -61,7 +68,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let heading = NSTextField(labelWithString: "Air conditioner")
     private let roomStatus = NSTextField(labelWithString: "Waiting for status")
     private let power = PowerButton(frame: .zero)
-    private let targetReading = NSTextField(labelWithString: "—°")
+    private let targetReading = NSTextField(labelWithString: "—")
     private let cooler = TemperatureButton(increasesTemperature: false)
     private let warmer = TemperatureButton(increasesTemperature: true)
     private let mode = NSPopUpButton()
@@ -72,10 +79,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let fanPercent = NSTextField(labelWithString: "—")
     private let autoFan = NSSwitch()
     private let boost = NSSwitch()
+    private let eco = NSSwitch()
     private let fanNote = NSTextField(wrappingLabelWithString: "")
-    private let swing = NSPopUpButton()
-    private let verticalAngle = NSPopUpButton()
-    private let horizontalAngle = NSPopUpButton()
+    private let swing = NSSegmentedControl()
+    private var swingChoices: [Choice] = []
+    private let verticalAngle = VentPositionControl(axis: .vertical)
+    private let horizontalAngle = VentPositionControl(axis: .horizontal)
     private var verticalAngleRow: NSStackView?
     private var horizontalAngleRow: NSStackView?
     private let footer = NSTextField(wrappingLabelWithString: "")
@@ -342,8 +351,6 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         contents.setCustomSpacing(4, after: targetCaption)
         targetReading.font = .monospacedDigitSystemFont(ofSize: 52, weight: .light)
         targetReading.alignment = .center
-        targetReading.widthAnchor.constraint(equalToConstant: 150).isActive = true
-        targetReading.setContentHuggingPriority(.defaultLow, for: .horizontal)
         targetReading.setAccessibilityLabel("Target temperature")
         for (button, action, label) in [(cooler, #selector(lowerTemperature), "Decrease temperature"), (warmer, #selector(raiseTemperature), "Increase temperature")] {
             configure(button, action)
@@ -351,7 +358,23 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.heightAnchor.constraint(equalToConstant: 64).isActive = true
             button.setAccessibilityLabel(label)
         }
-        let temperatureRow = NSStackView(views: [cooler, targetReading, warmer]); temperatureRow.spacing = 12
+        let targetDisplay = NSView()
+        let degree = NSTextField(labelWithString: "°")
+        degree.font = targetReading.font
+        degree.setAccessibilityElement(false)
+        for view in [targetReading, degree] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            targetDisplay.addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            targetDisplay.widthAnchor.constraint(equalToConstant: 150),
+            targetReading.centerXAnchor.constraint(equalTo: targetDisplay.centerXAnchor),
+            targetReading.topAnchor.constraint(equalTo: targetDisplay.topAnchor),
+            targetReading.bottomAnchor.constraint(equalTo: targetDisplay.bottomAnchor),
+            degree.leadingAnchor.constraint(equalTo: targetReading.trailingAnchor, constant: -2),
+            degree.firstBaselineAnchor.constraint(equalTo: targetReading.firstBaselineAnchor)
+        ])
+        let temperatureRow = NSStackView(views: [cooler, targetDisplay, warmer]); temperatureRow.spacing = 12
         temperatureRow.alignment = .centerY
         let temperatureContainer = NSView()
         temperatureRow.translatesAutoresizingMaskIntoConstraints = false
@@ -378,6 +401,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let fanControl = NSStackView(views: [fan, fanPercent]); fanControl.spacing = 8
         row("Fan speed", fanControl, in: contents)
         configure(autoFan, #selector(setAutoFan)); configure(boost, #selector(setBoost))
+        let fanSettings = NSStackView()
+        fanSettings.orientation = .vertical; fanSettings.alignment = .leading; fanSettings.spacing = 4
         func fanSetting(_ title: String, symbol: String, toggle: NSSwitch) {
             let icon = NSImageView()
             icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
@@ -392,21 +417,35 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             setting.alignment = .centerY; setting.spacing = 12
             setting.distribution = .fill
             setting.heightAnchor.constraint(equalToConstant: 34).isActive = true
-            full(setting, in: contents)
+            full(setting, in: fanSettings)
         }
         fanSetting("Automatic fan", symbol: "fanblades", toggle: autoFan)
         fanSetting("Boost", symbol: "bolt", toggle: boost)
+        configure(eco, #selector(setEco))
+        fanSetting("Eco mode", symbol: "leaf", toggle: eco)
+        full(fanSettings, in: contents)
         fanNote.font = .systemFont(ofSize: 11); fanNote.textColor = .secondaryLabelColor
         full(fanNote, in: contents); fanNote.heightAnchor.constraint(equalToConstant: 30).isActive = true
         let fanDivider = NSBox(); fanDivider.boxType = .separator
         full(fanDivider, in: contents)
-        configure(swing, #selector(setSwing)); row("Swing", swing, in: contents)
+        let airflow = NSTextField(labelWithString: "Airflow")
+        airflow.font = .systemFont(ofSize: 11, weight: .medium); airflow.textColor = .secondaryLabelColor
+        full(airflow, in: contents)
+        func airflowSetting(_ title: String, control: NSControl) -> NSStackView {
+            let label = NSTextField(labelWithString: title); label.font = .systemFont(ofSize: 13, weight: .medium)
+            let group = NSStackView(); group.orientation = .vertical; group.alignment = .leading; group.spacing = 6
+            full(label, in: group); full(control, in: group); full(group, in: contents)
+            return group
+        }
+        configure(swing, #selector(setSwing)); swing.segmentStyle = .rounded
+        swing.segmentDistribution = .fillEqually; swing.trackingMode = .selectOne
+        swing.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        swing.setAccessibilityLabel("Swing")
+        _ = airflowSetting("Swing", control: swing)
         configure(verticalAngle, #selector(setVerticalAngle))
-        verticalAngle.setAccessibilityLabel("Vertical vent position")
-        verticalAngleRow = row("Vertical vent", verticalAngle, in: contents)
+        verticalAngleRow = airflowSetting("Vertical vent", control: verticalAngle)
         configure(horizontalAngle, #selector(setHorizontalAngle))
-        horizontalAngle.setAccessibilityLabel("Horizontal vent position")
-        horizontalAngleRow = row("Horizontal vent", horizontalAngle, in: contents)
+        horizontalAngleRow = airflowSetting("Horizontal vent", control: horizontalAngle)
         footer.font = .systemFont(ofSize: 11); footer.textColor = .secondaryLabelColor
         footer.heightAnchor.constraint(equalToConstant: 42).isActive = true
         full(footer, in: contents)
@@ -423,7 +462,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rename.isEnabled = !authenticating
         power.isEnabled = enabled; modeSegments.isEnabled = enabled;
         let target = temperatureDrafts[d.id] ?? change?.temperature ?? d.temperature
-        targetReading.stringValue = target.map { "\(number($0))°" } ?? "—°"
+        targetReading.stringValue = target.map { number($0) } ?? "—"
         targetReading.setAccessibilityValue(target.map { "\(number($0)) degrees Celsius" } ?? "Unknown")
         cooler.isEnabled = enabled && target != nil && target! > d.minTemperature
         warmer.isEnabled = enabled && target != nil && target! < d.maxTemperature; mode.isEnabled = enabled; swing.isEnabled = enabled
@@ -434,6 +473,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if d.online {
             let powerOn = change?.power ?? d.power
             let boostOn = change?.boost ?? d.boost
+            let ecoOn = (change?.eco ?? d.eco) && !boostOn
             let speed = change?.fan ?? d.fan
             roomStatus.stringValue = "Currently \(number(d.indoor))°C"
             power.setPowerState(powerOn)
@@ -447,28 +487,34 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             modeSegments.selectedSegment = d.modes.firstIndex { $0.value == (change?.mode ?? d.mode) } ?? -1
             let compactModes = (1...4).contains(d.modes.count)
             modeRow?.isHidden = compactModes; modeSegments.isHidden = !compactModes
-            updatePicker(swing, choices: d.swings, value: change?.swing ?? d.swing)
+            if swingChoices != d.swings {
+                swingChoices = d.swings; swing.segmentCount = d.swings.count
+                for (index, choice) in d.swings.enumerated() { swing.setLabel(choice.name, forSegment: index) }
+            }
+            swing.selectedSegment = d.swings.firstIndex { $0.value == (change?.swing ?? d.swing) } ?? -1
             updateAnglePicker(verticalAngle, choices: d.verticalAngles, value: change?.verticalAngle ?? d.verticalAngle)
             updateAnglePicker(horizontalAngle, choices: d.horizontalAngles, value: change?.horizontalAngle ?? d.horizontalAngle)
             fanSteps = d.customFan ? Array(1...100) : d.fans.map { Int($0.value) }.filter { (1...100).contains($0) }.sorted()
             if !fan.isDragging {
                 if (1...100).contains(Int(speed)) && !boostOn { manualSpeeds[d.id] = Int(speed) }
                 fan.minValue = Double(fanSteps.first ?? 1); fan.maxValue = Double(fanSteps.last ?? 100)
-                fan.doubleValue = Double(speed == 102 ? (manualSpeeds[d.id] ?? 50) : Int(speed))
-                fanPercent.stringValue = boostOn ? "Boost" : (speed == 102 ? "Auto" : "\(speed)%")
-                autoFan.state = speed == 102 ? .on : .off
+                fan.doubleValue = FanSpeedDisplay.sliderValue(speed, lastManual: manualSpeeds[d.id])
+                fanPercent.stringValue = FanSpeedDisplay.label(speed, boost: boostOn)
+                autoFan.state = speed == 102 && !boostOn && !ecoOn ? .on : .off
                 fan.setAccessibilityValueDescription(fanPercent.stringValue)
             }
             fan.isEnabled = enabled && !boostOn && speed != 102 && !fanSteps.isEmpty
             fanPercent.textColor = fan.isEnabled ? .labelColor : .disabledControlTextColor
             autoFan.isEnabled = enabled && d.fans.contains { $0.value == 102 }
-            boost.state = boostOn ? .on : .off; boost.isEnabled = enabled && d.supportsBoost
+            boost.state = boostOn ? .on : .off; boost.isEnabled = enabled && d.supportsBoost && (speed != 102 || !fanSteps.isEmpty)
+            eco.state = ecoOn ? .on : .off
+            eco.isEnabled = enabled && d.supportsEco && (speed != 102 || !fanSteps.isEmpty)
             fanNote.stringValue = "This model supports fixed fan speeds; the slider snaps to them."
             fanNote.isHidden = d.customFan || boostOn || speed == 102
         } else {
             roomStatus.stringValue = "Status unavailable"
             power.setPowerState(nil)
-            fan.isEnabled = false; autoFan.isEnabled = false; boost.isEnabled = false
+            fan.isEnabled = false; autoFan.isEnabled = false; boost.isEnabled = false; eco.isEnabled = false
             fanPercent.textColor = .disabledControlTextColor
         }
         if let error = operationErrors[d.id] { footer.stringValue = error }
@@ -501,11 +547,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         picker.selectItem(withTag: Int(value))
     }
 
-    private func updateAnglePicker(_ picker: NSPopUpButton, choices: [Choice], value: Int32?) {
-        // A supported vent may not have reported its position yet; don't imply it is off.
-        let available = value == nil ? [Choice(value: -1, name: "Unknown")] + choices : choices
-        updatePicker(picker, choices: available, value: value ?? -1)
-        picker.menu?.item(withTag: -1)?.isEnabled = false
+    private func updateAnglePicker(_ picker: VentPositionControl, choices: [Choice], value: Int32?) {
+        picker.update(values: choices.map { $0.value }, selected: value)
     }
 
     private func merging(_ older: SettingsChange?, _ newer: SettingsChange) -> SettingsChange {
@@ -513,15 +556,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                        temperature: newer.temperature ?? older?.temperature,
                        mode: newer.mode ?? older?.mode, fan: newer.fan ?? older?.fan,
                        swing: newer.swing ?? older?.swing, boost: newer.boost ?? older?.boost,
+                       eco: newer.eco ?? older?.eco,
                        verticalAngle: newer.verticalAngle ?? older?.verticalAngle,
                        horizontalAngle: newer.horizontalAngle ?? older?.horizontalAngle)
     }
 
-    private func change(power: Bool? = nil, temperature: Double? = nil, mode: Int32? = nil, fan: Int32? = nil, swing: Int32? = nil, boost: Bool? = nil, verticalAngle: Int32? = nil, horizontalAngle: Int32? = nil, deviceID: String? = nil) {
+    private func change(power: Bool? = nil, temperature: Double? = nil, mode: Int32? = nil, fan: Int32? = nil, swing: Int32? = nil, boost: Bool? = nil, eco: Bool? = nil, verticalAngle: Int32? = nil, horizontalAngle: Int32? = nil, deviceID: String? = nil) {
         guard let core, let d = snapshot.devices.first(where: { $0.id == (deviceID ?? selectedID) }), snapshot.signedIn, !authenticating, d.online else { return }
         let draft = temperatureDrafts.removeValue(forKey: d.id)
         temperatureTasks.removeValue(forKey: d.id)?.cancel()
-        let change = SettingsChange(power: power, temperature: temperature ?? draft, mode: mode, fan: fan, swing: swing, boost: boost, verticalAngle: verticalAngle, horizontalAngle: horizontalAngle)
+        let change = SettingsChange(power: power, temperature: temperature ?? draft, mode: mode, fan: fan, swing: swing, boost: boost, eco: eco, verticalAngle: verticalAngle, horizontalAngle: horizontalAngle)
         let alreadyRunning = pending[d.id] != nil
         // Latest value wins per setting; different settings are combined into the next request.
         queued[d.id] = merging(queued[d.id], change)
@@ -583,28 +627,50 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         change(mode: modeChoices[modeSegments.selectedSegment].value)
     }
     @objc private func setMode() { change(mode: Int32(mode.selectedTag())) }
-    @objc private func setSwing() { change(swing: Int32(swing.selectedTag())) }
-    @objc private func setVerticalAngle() { change(verticalAngle: Int32(verticalAngle.selectedTag())) }
-    @objc private func setHorizontalAngle() { change(horizontalAngle: Int32(horizontalAngle.selectedTag())) }
-    @objc private func setBoost() { change(boost: boost.state == .on) }
+    @objc private func setSwing() {
+        guard swingChoices.indices.contains(swing.selectedSegment) else { return }
+        change(swing: swingChoices[swing.selectedSegment].value)
+    }
+    @objc private func setVerticalAngle() { change(verticalAngle: verticalAngle.selectedValue) }
+    @objc private func setHorizontalAngle() { change(horizontalAngle: horizontalAngle.selectedValue) }
+    private func manualFanSelection() -> Int32? {
+        guard let d = selected else { return nil }
+        let remembered = manualSpeeds[d.id] ?? fanPercentage()
+        return fanSteps.min { abs($0 - remembered) < abs($1 - remembered) }.map { Int32($0) }
+    }
+    @objc private func setEco() {
+        guard let d = selected else { return }
+        let on = eco.state == .on
+        change(fan: on ? manualFanSelection() : nil,
+               boost: on && d.supportsBoost ? false : nil, eco: on)
+    }
+    @objc private func setBoost() {
+        guard let d = selected else { return }
+        let on = boost.state == .on
+        change(fan: on ? manualFanSelection() : nil, boost: on,
+               eco: on && d.supportsEco ? false : nil)
+    }
     @objc private func setAutoFan() {
-        // An explicit fan-mode selection takes control back from Boost.
-        change(fan: autoFan.state == .on ? 102 : Int32(fanPercentage()),
-               boost: selected?.supportsBoost == true ? false : nil)
+        guard let d = selected else { return }
+        let on = autoFan.state == .on
+        change(fan: on ? 102 : manualFanSelection(),
+               boost: on && d.supportsBoost ? false : nil,
+               eco: on && d.supportsEco ? false : nil)
     }
     private func fanPercentage() -> Int {
         let value = Int(fan.doubleValue.rounded())
         return fanSteps.min { abs($0 - value) < abs($1 - value) } ?? min(100, max(1, value))
     }
     @objc private func previewFan() {
-        let value = fanPercentage(); fan.doubleValue = Double(value)
+        let value = fanPercentage()
+        if !fan.isDragging { fan.doubleValue = Double(value) }
         fanPercent.stringValue = "\(value)%"; autoFan.state = .off
         fan.setAccessibilityValueDescription("\(value) percent")
         if !fan.isDragging { commitFan() }
     }
     private func commitFan() {
         guard fan.isEnabled, let d = selected else { return }
-        let value = fanPercentage(); manualSpeeds[d.id] = value
+        let value = fanPercentage(); fan.doubleValue = Double(value); manualSpeeds[d.id] = value
         if (pending[d.id]?.fan ?? d.fan) != value { change(fan: Int32(value)) }
     }
 

@@ -8,7 +8,7 @@ DOCKER ?= docker
 IMAGE ?= ac-man:local
 DOCKER_OUTPUT ?= dist/docker
 
-.PHONY: help fmt fmt-check check test clippy cli app bindings audit trivy security ci licenses docker-build docker-test docker-export trivy-image
+.PHONY: test-native help fmt fmt-check check test clippy cli app bindings audit trivy security ci licenses docker-build docker-test docker-export trivy-image
 
 help:
 	@printf '%s\n' \
@@ -19,6 +19,7 @@ help:
 	  'make fmt-check      Check Rust formatting without changing files' \
 	  'make check          Check all Rust targets' \
 	  'make test           Run all Rust tests (no device credentials needed)' \
+	  'make test-native    Run native macOS control tests without AC access' \
 	  'make clippy         Run Clippy with warnings treated as errors' \
 	  'make ci             Run formatting, Clippy and tests' \
 	  'make audit          Check Cargo.lock against RustSec (cargo-audit)' \
@@ -41,6 +42,9 @@ check:
 
 test:
 	$(CARGO) test --locked --all-targets
+
+test-native:
+	./scripts/test-native.sh
 
 clippy:
 	$(CARGO) clippy --locked --all-targets -- -D warnings

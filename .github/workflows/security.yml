@@ -1,0 +1,150 @@
+name: Scheduled security scans
+
+on:
+  schedule:
+    # Sundays at midnight GMT (00:00 UTC), with no daylight-saving changes.
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduled-security-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+  RUSTUP_TOOLCHAIN: '1.98.1'
+
+jobs:
+  security:
+    name: Dependency, source, and container scans
+    outputs:
+      sarif_ready: ${{ steps.sarif.outputs.ready }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install pinned Rust and audit tools
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          cargo install cargo-about --version 0.9.1 --locked --features cli
+      - name: Restore Cargo Audit tool
+        id: audit_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.local/ac-man-audit
+          key: audit-${{ runner.os }}-${{ runner.arch }}-rust1.98.1-v0.22.2
+      - name: Install Cargo Audit tool
+        if: steps.audit_cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-audit --version 0.22.2 --locked --root "$HOME/.local/ac-man-audit"
+      - name: Check Cargo.lock against the RustSec advisory database
+        id: audit
+        continue-on-error: true
+        # A fresh path forces a new RustSec checkout; fetch failures fail the job.
+        run: '"$HOME/.local/ac-man-audit/bin/cargo-audit" audit --file Cargo.lock --db "$RUNNER_TEMP/rustsec-advisory-db"'
+      - name: Install checksum-pinned Trivy
+        # SHA256 from the official immutable v0.76.0 Linux-64bit release asset.
+        # Keep version and digest together when updating; never use an install-script pipe.
+        run: |
+          tool_dir="$RUNNER_TEMP/trivy-bin"
+          mkdir -p "$tool_dir"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            'https://github.com/aquasecurity/trivy/releases/download/v0.76.0/trivy_0.76.0_Linux-64bit.tar.gz' \
+            --output "$RUNNER_TEMP/trivy.tar.gz"
+          printf '%s  %s\n' 'e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7' "$RUNNER_TEMP/trivy.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/trivy.tar.gz" -C "$tool_dir" trivy
+          printf '%s\n' "$tool_dir" >> "$GITHUB_PATH"
+      - name: Download current vulnerability definitions
+        env:
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
+        # No restored cache or offline/skip-update flags: fetch the latest
+        # available database on every run and fail if it cannot be downloaded.
+        run: trivy image --download-db-only --timeout 10m
+      - name: Scan source, dependencies, secrets, and configuration
+        id: source_scan
+        continue-on-error: true
+        env:
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
+        run: |
+          mkdir -p "$RUNNER_TEMP/trivy-sarif"
+          trivy fs --format sarif --output "$RUNNER_TEMP/trivy-sarif/source.sarif" --scanners vuln,secret,misconfig --severity HIGH,CRITICAL \
+            --exit-code 1 --timeout 10m --skip-dirs target --skip-dirs dist .
+      - name: Build the non-root CLI container
+        run: |
+          mkdir -p licenses
+          cargo about generate --locked --fail --target x86_64-unknown-linux-gnu \
+            -o licenses/DEPENDENCIES.html about.hbs
+          docker build --target runtime --tag ac-man:scan .
+      - name: Scan the built container
+        id: container_scan
+        continue-on-error: true
+        env:
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
+        run: |
+          trivy image --format sarif --output "$RUNNER_TEMP/trivy-sarif/container.sarif" --scanners vuln,secret --severity HIGH,CRITICAL \
+            --exit-code 1 --timeout 10m ac-man:scan
+      - name: Locate generated SARIF reports
+        id: sarif
+        if: ${{ always() && !cancelled() }}
+        run: |
+          if [[ -s "$RUNNER_TEMP/trivy-sarif/source.sarif" || -s "$RUNNER_TEMP/trivy-sarif/container.sarif" ]]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Preserve SARIF even when findings fail the scan
+        if: ${{ always() && !cancelled() && steps.sarif.outputs.ready == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-sarif
+          path: ${{ runner.temp }}/trivy-sarif/*.sarif
+          if-no-files-found: error
+          retention-days: 7
+      - name: Enforce security results
+        if: ${{ always() && !cancelled() }}
+        env:
+          AUDIT: ${{ steps.audit.outcome }}
+          SOURCE_SCAN: ${{ steps.source_scan.outcome }}
+          CONTAINER_SCAN: ${{ steps.container_scan.outcome }}
+        run: |
+          [[ "$AUDIT" == success && "$SOURCE_SCAN" == success && "$CONTAINER_SCAN" == success ]]
+
+  upload-sarif:
+    name: Publish Trivy code-scanning results
+    needs: security
+    if: ${{ !cancelled() && needs.security.outputs.sarif_ready == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      # This isolated job never builds or executes project code.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: trivy-sarif
+          path: sarif-results
+      - name: Upload source findings
+        if: ${{ !cancelled() && hashFiles('sarif-results/source.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@f051dc808ef3645eb0d08647ec751634ec2304ac # v4
+        with:
+          sarif_file: sarif-results/source.sarif
+          category: trivy-source
+      - name: Upload container findings
+        if: ${{ !cancelled() && hashFiles('sarif-results/container.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@f051dc808ef3645eb0d08647ec751634ec2304ac # v4
+        with:
+          sarif_file: sarif-results/container.sarif
+          category: trivy-container

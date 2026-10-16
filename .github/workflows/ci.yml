@@ -1,6 +1,8 @@
 name: Tests and security
 
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
   workflow_call:
@@ -39,7 +41,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, macos-15, macos-15-intel]
+        runner: [macos-15, macos-15-intel]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -65,6 +67,9 @@ jobs:
           mkdir -p licenses
           cargo about generate --locked --fail --target aarch64-apple-darwin \
             -o licenses/DEPENDENCIES.html about.hbs
+      - name: Test native controls
+        if: runner.os == 'macOS'
+        run: make test-native
       - name: Build Swift menu-bar application
         if: matrix.runner == 'macos-15'
         run: ./build.sh
@@ -84,8 +89,52 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  linux:
+    name: Test (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.revision || github.sha }}
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+      - run: cargo fmt --all --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked --all-targets
+      - name: Restore license tool
+        id: about_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.local/ac-man-about
+          key: about-${{ runner.os }}-${{ runner.arch }}-rust1.98.1-v0.9.1
+      - name: Install license tool
+        if: steps.about_cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-about --version 0.9.1 --locked --features cli --root "$HOME/.local/ac-man-about"
+      - name: Build the Linux CLI once and test its runtime image
+        run: |
+          mkdir -p licenses
+          "$HOME/.local/ac-man-about/bin/cargo-about" about generate --locked --fail --target x86_64-unknown-linux-gnu \
+            -o licenses/DEPENDENCIES.html about.hbs
+          docker build --provenance=false --target runtime --tag ac-man:scan .
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges ac-man:scan --help
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges ac-man:scan --version
+          docker save ac-man:scan | gzip > "$RUNNER_TEMP/linux-runtime.tar.gz"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: checked-linux-runtime
+          path: ${{ runner.temp }}/linux-runtime.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
   security:
+    needs: linux
     name: Dependency, source, and container scans
+    outputs:
+      sarif_ready: ${{ steps.sarif.outputs.ready }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -96,10 +145,19 @@ jobs:
       - name: Install pinned Rust and audit tools
         run: |
           rustup toolchain install 1.98.1 --profile minimal
-          cargo install cargo-audit --version 0.22.2 --locked
-          cargo install cargo-about --version 0.9.1 --locked --features cli
+      - name: Restore Cargo Audit tool
+        id: audit_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.local/ac-man-audit
+          key: audit-${{ runner.os }}-${{ runner.arch }}-rust1.98.1-v0.22.2
+      - name: Install Cargo Audit tool
+        if: steps.audit_cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-audit --version 0.22.2 --locked --root "$HOME/.local/ac-man-audit"
       - name: Check Cargo.lock against the RustSec advisory database
-        run: cargo audit --file Cargo.lock
+        id: audit
+        continue-on-error: true
+        run: '"$HOME/.local/ac-man-audit/bin/cargo-audit" audit --file Cargo.lock'
       - name: Install checksum-pinned Trivy
         # SHA256 from the official immutable v0.76.0 Linux-64bit release asset.
         # Keep version and digest together when updating; never use an install-script pipe.
@@ -113,20 +171,83 @@ jobs:
           tar -xzf "$RUNNER_TEMP/trivy.tar.gz" -C "$tool_dir" trivy
           printf '%s\n' "$tool_dir" >> "$GITHUB_PATH"
       - name: Scan source, dependencies, secrets, and configuration
+        id: source_scan
+        continue-on-error: true
         env:
           TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
         run: |
-          trivy fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL \
+          mkdir -p "$RUNNER_TEMP/trivy-sarif"
+          trivy fs --format sarif --output "$RUNNER_TEMP/trivy-sarif/source.sarif" --scanners vuln,secret,misconfig --severity HIGH,CRITICAL \
             --exit-code 1 --timeout 10m --skip-dirs target --skip-dirs dist .
-      - name: Build the non-root CLI container
-        run: |
-          mkdir -p licenses
-          cargo about generate --locked --fail --target x86_64-unknown-linux-gnu \
-            -o licenses/DEPENDENCIES.html about.hbs
-          docker build --target runtime --tag ac-man:scan .
+      - name: Download the tested Linux runtime
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: checked-linux-runtime
+          path: ${{ runner.temp }}/checked-linux-runtime
+      - name: Load the tested image without rebuilding
+        run: docker load --input "$RUNNER_TEMP/checked-linux-runtime/linux-runtime.tar.gz"
       - name: Scan the built container
+        id: container_scan
+        continue-on-error: true
         env:
           TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
         run: |
-          trivy image --scanners vuln,secret --severity HIGH,CRITICAL \
+          trivy image --format sarif --output "$RUNNER_TEMP/trivy-sarif/container.sarif" --scanners vuln,secret --severity HIGH,CRITICAL \
             --exit-code 1 --timeout 10m ac-man:scan
+      - name: Locate generated SARIF reports
+        id: sarif
+        if: ${{ always() && !cancelled() }}
+        run: |
+          if [[ -s "$RUNNER_TEMP/trivy-sarif/source.sarif" || -s "$RUNNER_TEMP/trivy-sarif/container.sarif" ]]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Preserve SARIF even when findings fail the scan
+        if: ${{ always() && !cancelled() && steps.sarif.outputs.ready == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-sarif
+          path: ${{ runner.temp }}/trivy-sarif/*.sarif
+          if-no-files-found: error
+          retention-days: 7
+      - name: Enforce security results
+        if: ${{ always() && !cancelled() }}
+        env:
+          AUDIT: ${{ steps.audit.outcome }}
+          SOURCE_SCAN: ${{ steps.source_scan.outcome }}
+          CONTAINER_SCAN: ${{ steps.container_scan.outcome }}
+        run: |
+          [[ "$AUDIT" == success && "$SOURCE_SCAN" == success && "$CONTAINER_SCAN" == success ]]
+
+  upload-sarif:
+    name: Publish Trivy code-scanning results
+    needs: security
+    # Fork PRs keep downloadable reports but do not receive a write token.
+    # Release rechecks retain artifacts; avoid attributing tagged source to main.
+    if: ${{ !cancelled() && inputs.revision == '' && needs.security.outputs.sarif_ready == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      # This isolated job never builds or executes project code.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: trivy-sarif
+          path: sarif-results
+      - name: Upload source findings
+        if: ${{ !cancelled() && hashFiles('sarif-results/source.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@f051dc808ef3645eb0d08647ec751634ec2304ac # v4
+        with:
+          sarif_file: sarif-results/source.sarif
+          category: trivy-source
+      - name: Upload container findings
+        if: ${{ !cancelled() && hashFiles('sarif-results/container.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@f051dc808ef3645eb0d08647ec751634ec2304ac # v4
+        with:
+          sarif_file: sarif-results/container.sarif
+          category: trivy-container

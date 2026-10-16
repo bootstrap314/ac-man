@@ -68,6 +68,8 @@ jobs:
       release_tag: ${{ needs.resolve.outputs.tag }}
     permissions:
       contents: read
+      actions: read
+      security-events: write
 
   cli:
     name: Package CLI (${{ matrix.target }})
@@ -115,6 +117,175 @@ jobs:
           path: release-assets/*
           if-no-files-found: error
           retention-days: 7
+
+  container:
+    name: Build and scan CLI container (${{ matrix.arch }})
+    needs: [resolve, checks]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+            target: x86_64-unknown-linux-gnu
+            trivy_arch: 64bit
+            trivy_sha: e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            target: aarch64-unknown-linux-gnu
+            trivy_arch: ARM64
+            trivy_sha: aab21e677a7b7071fc79f1711480840754c18a1b9d9cefa7ccd06af63a0e8f4c
+    # Build and execute the selected source without a package-write token.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
+          persist-credentials: false
+      - name: Build and smoke-test the native image
+        env:
+          ARCH: ${{ matrix.arch }}
+          RUST_TARGET: ${{ matrix.target }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.resolve.outputs.commit }}
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          cargo install cargo-about --version 0.9.1 --locked --features cli
+          mkdir -p licenses
+          cargo about generate --locked --fail --target "$RUST_TARGET" \
+            -o licenses/DEPENDENCIES.html about.hbs
+          docker build --provenance=false --platform "linux/$ARCH" --target runtime \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$RELEASE_COMMIT" \
+            --label "org.opencontainers.image.version=$RELEASE_TAG" \
+            --tag "ac-man-release:$ARCH" .
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges "ac-man-release:$ARCH" --help
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges "ac-man-release:$ARCH" --version
+      - name: Install checksum-pinned Trivy
+        env:
+          TRIVY_ARCH: ${{ matrix.trivy_arch }}
+          TRIVY_SHA: ${{ matrix.trivy_sha }}
+        run: |
+          tool_dir="$RUNNER_TEMP/trivy-bin"
+          mkdir -p "$tool_dir"
+          curl --fail --show-error --silent --location \
+            "https://github.com/aquasecurity/trivy/releases/download/v0.76.0/trivy_0.76.0_Linux-$TRIVY_ARCH.tar.gz" \
+            --output "$tool_dir/trivy.tar.gz"
+          printf '%s  %s\n' "$TRIVY_SHA" "$tool_dir/trivy.tar.gz" | sha256sum --check --strict
+          tar -xzf "$tool_dir/trivy.tar.gz" -C "$tool_dir" trivy
+          echo "$tool_dir" >> "$GITHUB_PATH"
+      - name: Download current vulnerability definitions and scan
+        env:
+          ARCH: ${{ matrix.arch }}
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/release-trivy-cache
+        run: |
+          # Fresh job-local cache: no restored database and no skip-update flag.
+          trivy image --download-db-only --timeout 10m
+          trivy image --scanners vuln,secret --severity HIGH,CRITICAL \
+            --exit-code 1 --timeout 10m "ac-man-release:$ARCH"
+      - name: Export the checked image
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p container-artifact
+          docker save "ac-man-release:$ARCH" | gzip > "container-artifact/$ARCH.tar.gz"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: container-${{ matrix.arch }}
+          path: container-artifact/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-container:
+    name: Publish multi-architecture CLI package
+    needs: [resolve, container, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # This fresh runner loads images as data; it never checks out or executes
+    # project code. Only this job gets permission to publish container packages.
+    permissions:
+      actions: read
+      packages: write
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: container-*
+          path: incoming-containers
+          merge-multiple: true
+      - name: Validate images and publish the platform manifest
+        id: package
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.resolve.outputs.commit }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          # Use a disposable Docker configuration; never persist the registry token.
+          export DOCKER_CONFIG="$RUNNER_TEMP/package-docker-config"
+          mkdir -m 700 "$DOCKER_CONFIG"
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true; rm -rf -- "$DOCKER_CONFIG"' EXIT
+          for arch in amd64 arm64; do
+            archive="incoming-containers/$arch.tar.gz"
+            test -f "$archive" && test ! -L "$archive"
+            docker load --input "$archive"
+            docker image inspect "ac-man-release:$arch" | jq --exit-status \
+              --arg arch "$arch" --arg commit "$RELEASE_COMMIT" --arg tag "$RELEASE_TAG" \
+              'length == 1 and .[0].Os == "linux" and .[0].Architecture == $arch
+               and .[0].Config.Labels["org.opencontainers.image.revision"] == $commit
+               and .[0].Config.Labels["org.opencontainers.image.version"] == $tag' >/dev/null
+          done
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          refs=()
+          for arch in amd64 arm64; do
+            # Run-scoped staging tags avoid cross-run races. The release tag points
+            # at an index of immutable digests, not these mutable platform tags.
+            staging="$image:build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$arch"
+            docker tag "ac-man-release:$arch" "$staging"
+            docker push "$staging"
+            digest=$(docker image inspect "$staging" --format '{{index .RepoDigests 0}}')
+            [[ "$digest" == "$image@sha256:"* ]]
+            refs+=("$digest")
+          done
+          docker manifest create "$image:$RELEASE_TAG" "${refs[@]}"
+          docker manifest push "$image:$RELEASE_TAG" | tee "$RUNNER_TEMP/manifest-push.txt"
+          manifest_digest=$(tail -n 1 "$RUNNER_TEMP/manifest-push.txt")
+          [[ "$manifest_digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf 'image=%s\ndigest=%s\n' "$image" "$manifest_digest" >> "$GITHUB_OUTPUT"
+          docker manifest inspect "$image@$manifest_digest" | jq --exit-status \
+            '[.manifests[].platform | .os + "/" + .architecture] | sort == ["linux/amd64", "linux/arm64"]'
+          printf '### CLI container package\n\n`docker pull %s:%s`\n\nPlatforms: Linux amd64 and arm64.\n' \
+            "$image" "$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
+          printf '\nImmutable image: `%s@%s`\n' "$image" "$manifest_digest" >> "$GITHUB_STEP_SUMMARY"
+
+
+      - name: Authenticate to attach provenance
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          DOCKER_CONFIG: ${{ runner.temp }}/attestation-docker-config
+        run: |
+          mkdir -m 700 "$DOCKER_CONFIG"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Attest the published multi-architecture digest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/attestation-docker-config
+        with:
+          subject-name: ${{ steps.package.outputs.image }}
+          subject-digest: ${{ steps.package.outputs.digest }}
+          push-to-registry: true
+      - name: Remove attestation registry credentials
+        if: always()
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/attestation-docker-config
+        run: |
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          rm -rf -- "$DOCKER_CONFIG"
 
   sign-app:
     name: Sign and notarize macOS application
@@ -286,7 +457,7 @@ jobs:
 
   publish:
     name: Publish checked archives
-    needs: [resolve, cli, sign-app]
+    needs: [resolve, cli, sign-app, container]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     # Only this job can write a release. It never checks out or executes project code.
