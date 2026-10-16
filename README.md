@@ -212,6 +212,8 @@ The runtime does not start a desktop keyring or D-Bus service, so it is mainly u
 
 **Tests and security** runs on pull requests and pushes to main, and can also be started manually. It checks Rust formatting, Clippy, tests, CLI builds on Linux x86_64 and macOS arm64/Intel, the Apple Silicon Swift app build, Cargo Audit, Trivy source scans, and the built runtime image. The workflow also serves as the release verification gate.
 
+The Ubuntu test job builds and smoke-tests the distroless Linux runtime once, then passes that exact image to the security job for scanning. Pinned audit tools are cached separately from vulnerability databases; scans still fetch current advisories. The independent scheduled workflow builds its own image.
+
 Native macOS control tests (no AC commands): `make test-native`.
 
 Trivy source and container scans publish separate SARIF analyses to GitHub **Security → Code scanning** for main and same-repository PRs. Reports are also saved as workflow artifacts, including fork PRs and release checks. High/Critical findings still fail CI; RustSec checks run with `cargo audit`. Trivy covers dependencies, secrets, and configuration rather than general application-code data-flow analysis.

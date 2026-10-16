@@ -155,7 +155,7 @@ jobs:
           mkdir -p licenses
           cargo about generate --locked --fail --target "$RUST_TARGET" \
             -o licenses/DEPENDENCIES.html about.hbs
-          docker build --platform "linux/$ARCH" --target runtime \
+          docker build --provenance=false --platform "linux/$ARCH" --target runtime \
             --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --label "org.opencontainers.image.revision=$RELEASE_COMMIT" \
             --label "org.opencontainers.image.version=$RELEASE_TAG" \
