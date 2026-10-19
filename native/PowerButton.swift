@@ -62,6 +62,8 @@ final class PowerButton: NSButton {
         needsDisplay = true
     }
 
+    override var isFlipped: Bool { false }
+
     override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
 
     override var intrinsicContentSize: NSSize { NSSize(width: 38, height: 38) }
@@ -80,6 +82,18 @@ final class PowerButton: NSButton {
         fill.setFill(); circle.fill()
         NSColor.white.withAlphaComponent(dark ? 0.12 : 0.55).setStroke()
         circle.lineWidth = 0.75; circle.stroke()
-        super.draw(dirtyRect)
+        // Center the visible path itself, avoiding NSButtonCell/SF Symbol insets.
+        let symbol = NSBezierPath()
+        symbol.appendArc(withCenter: .zero, radius: 8, startAngle: 45, endAngle: 135, clockwise: true)
+        symbol.move(to: NSPoint(x: 0, y: 1))
+        symbol.line(to: NSPoint(x: 0, y: 10))
+        var transform = AffineTransform()
+        transform.translate(x: bounds.midX - symbol.bounds.midX, y: bounds.midY - symbol.bounds.midY)
+        symbol.transform(using: transform)
+        (hasKnownState || connectionBroken ? NSColor.white : NSColor.labelColor)
+            .withAlphaComponent(isEnabled || connectionBroken ? 1 : 0.45).setStroke()
+        symbol.lineWidth = 2.2
+        symbol.lineCapStyle = .round
+        symbol.stroke()
     }
 }

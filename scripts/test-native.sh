@@ -8,6 +8,6 @@ fi
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 swiftc -swift-version 6 -warnings-as-errors \
-  native/VentPositionControl.swift native/FanSpeedDisplay.swift \
+  native/VentPositionControl.swift native/FanSpeedDisplay.swift native/VentSelectionMemory.swift \
   tests/native/ControlsTests.swift -o "$scratch/controls-tests"
 "$scratch/controls-tests"

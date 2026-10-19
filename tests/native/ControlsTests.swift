@@ -49,6 +49,16 @@ struct ControlsTests {
             control.isEnabled = true
             check(stack.arrangedSubviews.compactMap { $0 as? NSButton }.allSatisfy { $0.isEnabled }, "Controls must recover after reconnect")
         }
+        var memory = VentSelectionMemory()
+        check(memory.display(device: "a", axis: .vertical, reported: 0, pending: nil).value == nil, "Unknown position without history stays unknown")
+        check(memory.display(device: "a", axis: .vertical, reported: 0, pending: 50).value == 50, "Pending choice highlights immediately")
+        let retained = memory.display(device: "a", axis: .vertical, reported: 0, pending: nil)
+        check(retained.value == 50 && !retained.confirmed, "Zero readback retains the last choice without claiming confirmation")
+        check(memory.display(device: "b", axis: .vertical, reported: nil, pending: nil).value == nil, "Choices cannot leak between devices")
+        check(memory.display(device: "a", axis: .horizontal, reported: nil, pending: nil).value == nil, "Choices cannot leak between axes")
+        let actual = memory.display(device: "a", axis: .vertical, reported: 75, pending: nil)
+        check(actual.value == 75 && actual.confirmed, "Valid device readback overrides remembered choice")
+        check(memory.display(device: "a", axis: .vertical, reported: nil, pending: nil).value == 75, "Missing readback retains latest known choice")
         for code: Int32 in [101, 103, 127, -1] {
             check(FanSpeedDisplay.label(code, boost: false) == "—", "Reserved fan code cannot be a percentage")
             check(FanSpeedDisplay.sliderValue(code, lastManual: 45) == 45, "Unknown fan code must retain the manual slider value")
