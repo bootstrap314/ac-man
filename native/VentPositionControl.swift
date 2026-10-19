@@ -7,6 +7,7 @@ final class VentPositionControl: NSControl {
     private let buttons = NSStackView()
     private var values: [Int32] = []
     private(set) var selectedValue: Int32?
+    var selectionConfirmed = true
     override var isEnabled: Bool { didSet { buttons.arrangedSubviews.compactMap { $0 as? NSButton }.forEach { $0.isEnabled = isEnabled; $0.needsDisplay = true } } }
     override var mouseDownCanMoveWindow: Bool { false }
 
@@ -39,7 +40,11 @@ final class VentPositionControl: NSControl {
         }
         selectedValue = values.contains(where: { $0 == selected }) ? selected : nil
         for case let button as VentPositionButton in buttons.arrangedSubviews {
-            button.state = Int32(button.tag) == selectedValue ? .on : .off
+            button.isPositionSelected = Int32(button.tag) == selectedValue
+            button.state = button.isPositionSelected ? .on : .off
+            let description = "\(axis == .vertical ? "Vertical" : "Horizontal") vent: Position \(button.position)"
+            button.toolTip = description + (button.isPositionSelected && !selectionConfirmed ? " (last selected; current position unconfirmed)" : "")
+            button.setAccessibilityHelp(button.toolTip)
             button.needsDisplay = true
         }
     }
@@ -53,7 +58,8 @@ final class VentPositionControl: NSControl {
 @MainActor
 private final class VentPositionButton: NSButton {
     private let axis: VentPositionControl.Axis
-    private let position: Int
+    let position: Int
+    var isPositionSelected = false
     init(axis: VentPositionControl.Axis, value: Int32) {
         self.axis = axis
         position = [Int32(0), 1, 25, 50, 75, 100].firstIndex(of: value) ?? 0
@@ -71,8 +77,8 @@ private final class VentPositionButton: NSButton {
     override func draw(_ dirtyRect: NSRect) {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let tile = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 7, yRadius: 7)
-        NSColor.labelColor.withAlphaComponent(state == .on ? (dark ? 0.24 : 0.16) : (isHighlighted ? 0.14 : 0.06)).setFill(); tile.fill()
-        NSColor.labelColor.withAlphaComponent(state == .on ? 0.36 : 0.16).setStroke(); tile.lineWidth = 0.75; tile.stroke()
+        NSColor.labelColor.withAlphaComponent(isPositionSelected ? (dark ? 0.24 : 0.16) : (isHighlighted ? 0.14 : 0.06)).setFill(); tile.fill()
+        NSColor.labelColor.withAlphaComponent(isPositionSelected ? 0.36 : 0.16).setStroke(); tile.lineWidth = 0.75; tile.stroke()
         let ink = NSColor.labelColor.withAlphaComponent(isEnabled ? 1 : 0.35)
         ink.setStroke()
         let mid = bounds.midX

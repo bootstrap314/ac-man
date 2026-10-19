@@ -83,6 +83,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let fanNote = NSTextField(wrappingLabelWithString: "")
     private let swing = NSSegmentedControl()
     private var swingChoices: [Choice] = []
+    private var ventSelectionMemory = VentSelectionMemory()
     private let verticalAngle = VentPositionControl(axis: .vertical)
     private let horizontalAngle = VentPositionControl(axis: .horizontal)
     private var verticalAngleRow: NSStackView?
@@ -181,7 +182,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func accept(_ value: AppSnapshot) {
         snapshot = value
-        if !value.signedIn { cancelTemperatureDrafts() }
+        if !value.signedIn { cancelTemperatureDrafts(); ventSelectionMemory = VentSelectionMemory() }
         updateDevice()
     }
 
@@ -492,8 +493,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 for (index, choice) in d.swings.enumerated() { swing.setLabel(choice.name, forSegment: index) }
             }
             swing.selectedSegment = d.swings.firstIndex { $0.value == (change?.swing ?? d.swing) } ?? -1
-            updateAnglePicker(verticalAngle, choices: d.verticalAngles, value: change?.verticalAngle ?? d.verticalAngle)
-            updateAnglePicker(horizontalAngle, choices: d.horizontalAngles, value: change?.horizontalAngle ?? d.horizontalAngle)
+            let vertical = ventSelectionMemory.display(device: d.id, axis: .vertical, reported: d.verticalAngle, pending: change?.verticalAngle)
+            let horizontal = ventSelectionMemory.display(device: d.id, axis: .horizontal, reported: d.horizontalAngle, pending: change?.horizontalAngle)
+            verticalAngle.selectionConfirmed = vertical.confirmed
+            horizontalAngle.selectionConfirmed = horizontal.confirmed
+            updateAnglePicker(verticalAngle, choices: d.verticalAngles, value: vertical.value)
+            updateAnglePicker(horizontalAngle, choices: d.horizontalAngles, value: horizontal.value)
+            verticalAngle.toolTip = vertical.confirmed ? "Current vertical vent position" : "Last selected vertical position; current position is unconfirmed"
+            horizontalAngle.toolTip = horizontal.confirmed ? "Current horizontal vent position" : "Last selected horizontal position; current position is unconfirmed"
             fanSteps = d.customFan ? Array(1...100) : d.fans.map { Int($0.value) }.filter { (1...100).contains($0) }.sorted()
             if !fan.isDragging {
                 if (1...100).contains(Int(speed)) && !boostOn { manualSpeeds[d.id] = Int(speed) }
