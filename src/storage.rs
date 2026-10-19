@@ -258,11 +258,11 @@ pub fn default_data_directory() -> PathBuf {
     {
         return path.into();
     }
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     if let Some(home) = std::env::var_os("HOME") {
         return PathBuf::from(home).join("Library/Application Support/Midea Control");
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
     {
         if let Some(path) = std::env::var_os("XDG_DATA_HOME") {
             return PathBuf::from(path).join("ac-control");
@@ -286,7 +286,7 @@ pub(crate) struct SavedAuth {
 const SERVICE: &str = "local.midea-control.smarthome";
 const ACCOUNT: &str = "SmartHome";
 fn load_login_sync() -> Result<Option<SavedAuth>> {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     {
         match security_framework::passwords::get_generic_password(SERVICE, ACCOUNT) {
             Ok(bytes) => serde_json::from_slice(&Zeroizing::new(bytes))
@@ -294,7 +294,7 @@ fn load_login_sync() -> Result<Option<SavedAuth>> {
                 .map_err(|_| problem("The saved Keychain login is invalid. Sign in again.")),
             Err(e) if e.code() == -25300 => Ok(None),
             Err(_) => Err(problem(
-                "macOS could not read the saved login. Unlock or allow access to Keychain.",
+                "Keychain could not read the saved login. Unlock or allow access to Keychain.",
             )),
         }
     }
@@ -310,10 +310,10 @@ fn load_login_sync() -> Result<Option<SavedAuth>> {
             )),
         }
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "linux")))]
     {
         Err(problem(
-            "Saved login requires macOS Keychain or Linux Secret Service.",
+            "Saved login requires Apple Keychain or Linux Secret Service.",
         ))
     }
 }
@@ -321,10 +321,10 @@ fn save_login_sync(auth: &SavedAuth) -> Result<()> {
     let bytes = Zeroizing::new(
         serde_json::to_vec(auth).map_err(|_| problem("Could not encode the saved login."))?,
     );
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     {
         security_framework::passwords::set_generic_password(SERVICE, ACCOUNT, &bytes)
-            .map_err(|_| problem("macOS could not save the login in Keychain."))
+            .map_err(|_| problem("Keychain could not save the login in Keychain."))
     }
     #[cfg(target_os = "linux")]
     {
@@ -332,21 +332,23 @@ fn save_login_sync(auth: &SavedAuth) -> Result<()> {
             problem("Cannot save login. Start and unlock your Secret Service keyring.")
         })
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "linux")))]
     {
         let _ = bytes;
         Err(problem(
-            "Saved login requires macOS Keychain or Linux Secret Service.",
+            "Saved login requires Apple Keychain or Linux Secret Service.",
         ))
     }
 }
 fn forget_login_sync() -> Result<()> {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     {
         match security_framework::passwords::delete_generic_password(SERVICE, ACCOUNT) {
             Ok(()) => Ok(()),
             Err(e) if e.code() == -25300 => Ok(()),
-            Err(_) => Err(problem("macOS could not remove the saved Keychain login.")),
+            Err(_) => Err(problem(
+                "Keychain could not remove the saved Keychain login.",
+            )),
         }
     }
     #[cfg(target_os = "linux")]
@@ -356,10 +358,10 @@ fn forget_login_sync() -> Result<()> {
             Err(_) => Err(problem("Cannot remove login from Secret Service.")),
         }
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "linux")))]
     {
         Err(problem(
-            "Saved login requires macOS Keychain or Linux Secret Service.",
+            "Saved login requires Apple Keychain or Linux Secret Service.",
         ))
     }
 }

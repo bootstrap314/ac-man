@@ -1,0 +1,5 @@
+[targets.apple]
+output = "generated/ios"
+ios_architectures = ["arm64"]
+simulator_architectures = ["arm64"]
+include_macos = false
