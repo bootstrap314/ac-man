@@ -21,15 +21,30 @@ struct RootView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.scenePhase) var phase
     var body: some View {
-        Group { if model.snapshot.signedIn { DeviceList() } else { LoginView() } }
+        Group {
+            if !model.restored {
+                ZStack {
+                    GlassBackground()
+                    VStack(spacing: 18) {
+                        if model.restoring { ProgressView("Restoring sign-in…") }
+                        else {
+                            Text("Unable to restore sign-in").font(.headline)
+                            Text(model.restoreError ?? "Please try again.").foregroundStyle(.secondary)
+                            Button("Try again") { Task { await model.start() } }.buttonStyle(.borderedProminent)
+                            Button("Sign in again") { model.showLogin() }
+                        }
+                    }.multilineTextAlignment(.center).padding(28)
+                }
+            } else if model.snapshot.signedIn { DeviceList() } else { LoginView() }
+        }
             .task {
                 await model.start()
                 while !Task.isCancelled {
                     do { try await Task.sleep(for: .seconds(30)) } catch { return }
-                    if phase == .active { await model.refresh() }
+                    if phase == .active { await model.resume() }
                 }
             }
-            .onChange(of: phase) { _, value in if value == .active { Task { await model.refresh() } } }
+            .onChange(of: phase) { _, value in if value == .active { Task { await model.resume() } } }
             .alert("ac-man", isPresented: Binding(get: { model.message != nil }, set: { if !$0 { model.message = nil } })) { Button("OK") { model.message = nil } } message: { Text(model.message ?? "") }
     }
 }

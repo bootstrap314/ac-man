@@ -1,4 +1,4 @@
-use crate::cloud::{CloudClient, DiscoveredDevice};
+use crate::cloud::{CloudClient, DiscoveredDevice, session_expired};
 use crate::protocol::{self, Capabilities, State};
 use crate::storage::{self, Record, SavedAuth, Store};
 use crate::{
@@ -304,13 +304,9 @@ impl Inner {
         if cloud.session.is_none() {
             cloud.login(&auth.account, &auth.password).await?;
         }
-        let devices = match cloud.appliances().await {
-            Err(ref e) if session_expired(e) => {
-                cloud.login(&auth.account, &auth.password).await?;
-                cloud.appliances().await?
-            }
-            result => result?,
-        };
+        let devices = cloud
+            .appliances_with_relogin(&auth.account, &auth.password)
+            .await?;
         let owned = self.account_devices(&devices)?;
         auth.client_id = self.store.client_id.clone();
         auth.session = cloud.session.clone();
@@ -489,16 +485,6 @@ impl Inner {
         Ok(snapshot)
     }
 }
-fn session_expired(error: &AcError) -> bool {
-    matches!(
-        error,
-        AcError::Cloud {
-            code: 3004 | 3106 | 3144 | 3302 | 65002 | 65006,
-            ..
-        }
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -2,6 +2,17 @@ import Foundation
 import Combine
 import AcManCore
 
+protocol AppController {
+    func restoreLogin() async throws -> AppSnapshot
+    func login(account: String, password: String, remember: Bool) async throws -> AppSnapshot
+    func refresh() async throws -> AppSnapshot
+    func logout() async throws -> AppSnapshot
+    func rename(selector: String, label: String) async throws -> AppSnapshot
+    func control(selector: String, change: SettingsChange) async throws -> AppSnapshot
+    func snapshot() async throws -> AppSnapshot
+}
+extension AcController: AppController {}
+
 @MainActor final class AppModel: ObservableObject {
     @Published private(set) var snapshot = AppSnapshot(signedIn: false, devices: [], route: "")
     @Published private(set) var pending: [String: SettingsChange] = [:]
@@ -9,25 +20,46 @@ import AcManCore
     @Published var message: String?
     @Published private(set) var authenticating = false
     @Published private(set) var refreshing = false
-    private var core: AcController?
+    private var core: (any AppController)?
+    @Published private(set) var restoring = false
+    @Published private(set) var restored = false
+    @Published private(set) var restoreError: String?
     private var queued: [String: SettingsChange] = [:]
     private var workers: [String: Task<Void, Never>] = [:]
     private var lastManual: [String: Int32] = [:]
     private var angles: [String: SettingsChange] = [:]
-    private var initialized = false
     let demo: Bool
 
-    init(demo: Bool = false) { self.demo = demo }
+    init(demo: Bool = false, controller: (any AppController)? = nil) {
+        self.demo = demo; self.core = controller
+    }
     func start() async {
-        guard !initialized else { return }
-        initialized = true
-        if demo { snapshot = DemoData.snapshot; return }
+        guard !restored, !restoring else { return }
+        restoring = true
+        restoreError = nil
+        defer { restoring = false }
+        if demo { snapshot = DemoData.snapshot; restored = true; return }
         do {
-            let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("ac-man")
-            core = try AcController(dataDirectory: directory.path)
+            if core == nil {
+                let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("ac-man")
+                core = try AcController(dataDirectory: directory.path)
+            }
             snapshot = try await core!.restoreLogin()
+            restored = true
             await refresh()
-        } catch { message = describe(error) }
+        } catch {
+            // A network or locked-Keychain failure is not a missing saved login.
+            // Keep the credentials and retry on foreground, timer, or user request.
+            restoreError = describe(error)
+        }
+    }
+    func showLogin() {
+        guard !restoring else { return }
+        restored = true
+        restoreError = nil
+    }
+    func resume() async {
+        if restored { await refresh() } else { await start() }
     }
     func login(account: String, password: String) async {
         guard let core, !authenticating else { return }

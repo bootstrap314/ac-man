@@ -52,3 +52,51 @@ final class ControlTests: XCTestCase {
         XCTAssertEqual(model.device("sample-1")?.temperature, 26)
     }
 }
+
+private final class SessionController: AppController {
+    var attempts = 0
+    var failures = 1
+    var signedIn = true
+    func snapshot() async throws -> AppSnapshot { AppSnapshot(signedIn: signedIn, devices: [], route: "test") }
+    func restoreLogin() async throws -> AppSnapshot {
+        attempts += 1
+        if attempts <= failures { throw AcError.cloud(code: 40002, message: "Rejected token") }
+        return try await snapshot()
+    }
+    func refresh() async throws -> AppSnapshot { try await snapshot() }
+    func login(account: String, password: String, remember: Bool) async throws -> AppSnapshot { try await snapshot() }
+    func logout() async throws -> AppSnapshot { signedIn = false; return try await snapshot() }
+    func rename(selector: String, label: String) async throws -> AppSnapshot { try await snapshot() }
+    func control(selector: String, change: SettingsChange) async throws -> AppSnapshot { try await snapshot() }
+}
+
+final class SessionTests: XCTestCase {
+    @MainActor func testFailedRestoreDoesNotShowLoginAndForegroundRetries() async {
+        let core = SessionController()
+        let model = AppModel(controller: core)
+        await model.start()
+        XCTAssertFalse(model.restored)
+        XCTAssertNotNil(model.restoreError)
+        await model.resume()
+        XCTAssertTrue(model.restored)
+        XCTAssertTrue(model.snapshot.signedIn)
+        XCTAssertNil(model.restoreError)
+        await model.resume()
+        XCTAssertEqual(core.attempts, 2)
+    }
+    @MainActor func testMissingCredentialsShowsLoginAfterSuccessfulLookup() async {
+        let core = SessionController(); core.failures = 0; core.signedIn = false
+        let model = AppModel(controller: core)
+        await model.start()
+        XCTAssertTrue(model.restored)
+        XCTAssertFalse(model.snapshot.signedIn)
+        XCTAssertNil(model.restoreError)
+    }
+    @MainActor func testNewAppInstanceRestoresSavedSession() async {
+        let core = SessionController(); core.failures = 0
+        let first = AppModel(controller: core); await first.start()
+        let reopened = AppModel(controller: core); await reopened.start()
+        XCTAssertTrue(reopened.snapshot.signedIn)
+        XCTAssertEqual(core.attempts, 2)
+    }
+}
