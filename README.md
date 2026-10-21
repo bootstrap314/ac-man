@@ -233,3 +233,11 @@ All workflow actions use immutable commit pins, and checkout credentials are not
 ## License
 
 ac-man is licensed under the [Apache License 2.0](LICENSE). Third-party components retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the generated `licenses/DEPENDENCIES.html` included with release downloads.
+
+## iPhone app (development)
+
+The SwiftUI iPhone app lives in [`ios/`](ios/README.md) and shares the Rust core with the Mac app and CLI. It includes a device list, temperature and fan controls, exclusive Automatic/Boost/Eco presets, and capability-aware vent controls. Requires iOS 17 or later. See the [build and simulator instructions](ios/README.md); it is not yet distributed through TestFlight or the App Store.
+
+<img src="docs/images/ios/device-list.png" alt="iPhone device list (simulator, sample devices)" width="280"> <img src="docs/images/ios/controls.png" alt="iPhone controls (simulator, sample devices)" width="280">
+
+Vent position readback depends on the AC firmware. Reported positions are loaded on refresh across the iPhone, Mac, and CLI apps. A zero angle setting does not identify the physical louver position, so it is exposed as unknown (`null` in JSON) rather than selecting a direction. A remembered selection is not a measurement of the current position.

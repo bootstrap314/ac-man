@@ -42,3 +42,5 @@ __pycache__/
 .vscode/
 *.swp
 *.swo
+
+/ios/AcMan.xcodeproj/

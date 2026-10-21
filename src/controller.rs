@@ -1,4 +1,4 @@
-use crate::cloud::{CloudClient, DiscoveredDevice};
+use crate::cloud::{CloudClient, DiscoveredDevice, session_expired};
 use crate::protocol::{self, Capabilities, State};
 use crate::storage::{self, Record, SavedAuth, Store};
 use crate::{
@@ -304,13 +304,9 @@ impl Inner {
         if cloud.session.is_none() {
             cloud.login(&auth.account, &auth.password).await?;
         }
-        let devices = match cloud.appliances().await {
-            Err(ref e) if session_expired(e) => {
-                cloud.login(&auth.account, &auth.password).await?;
-                cloud.appliances().await?
-            }
-            result => result?,
-        };
+        let devices = cloud
+            .appliances_with_relogin(&auth.account, &auth.password)
+            .await?;
         let owned = self.account_devices(&devices)?;
         auth.client_id = self.store.client_id.clone();
         auth.session = cloud.session.clone();
@@ -443,8 +439,11 @@ impl Inner {
                 mode: state.map_or(0, |s| s.mode),
                 fan: state.map_or(102, |s| s.fan),
                 swing: state.map_or(0, |s| s.swing),
-                vertical_angle: state.and_then(|s| s.vertical_angle),
-                horizontal_angle: state.and_then(|s| s.horizontal_angle),
+                // Zero disables the indexed-angle setting; it does not identify
+                // the physical position of the louver. Keep raw state for command
+                // confirmation, but expose no selected position to clients.
+                vertical_angle: state.and_then(|s| s.vertical_angle).filter(|v| *v != 0),
+                horizontal_angle: state.and_then(|s| s.horizontal_angle).filter(|v| *v != 0),
                 vertical_angles: if caps.is_some_and(|c| c.vertical_angle) {
                     choices(&[0, 1, 25, 50, 75, 100], ANGLE_NAMES)
                 } else {
@@ -486,16 +485,6 @@ impl Inner {
         Ok(snapshot)
     }
 }
-fn session_expired(error: &AcError) -> bool {
-    matches!(
-        error,
-        AcError::Cloud {
-            code: 3004 | 3106 | 3144 | 3302 | 65002 | 65006,
-            ..
-        }
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -542,6 +531,37 @@ mod tests {
             s.store.records().unwrap()
         };
         (dir, c, records)
+    }
+
+    #[tokio::test]
+    async fn snapshots_distinguish_reported_positions_from_zero_angle_settings() {
+        let (_dir, c, _records) = refresh_test_controller().await;
+        let mut inner = c.inner.lock().await;
+        // Real property-response shapes; contain no device or account identifiers.
+        for (reply, expected) in [
+            ("aa18ac00000000000203b10209000001000a0000010000c8a7", None),
+            (
+                "aa18ac00000000000203b102090000014b0a0000010000b96b",
+                Some(75),
+            ),
+        ] {
+            let (vertical, horizontal) =
+                protocol::decode_angles(&hex::decode(reply).unwrap()).unwrap();
+            let mut state = reference_state();
+            state.vertical_angle = vertical;
+            state.horizontal_angle = horizontal;
+            // Do not change the meaning of explicit zero-angle commands.
+            assert!(state.matches(&SettingsChange {
+                vertical_angle: vertical,
+                horizontal_angle: horizontal,
+                ..Default::default()
+            }));
+            inner.states.insert("10001".into(), state);
+            let snapshot = inner.snapshot().unwrap();
+            let device = snapshot.devices.iter().find(|d| d.id == "10001").unwrap();
+            assert_eq!(device.vertical_angle, expected);
+            assert_eq!(device.horizontal_angle, None);
+        }
     }
 
     #[tokio::test]

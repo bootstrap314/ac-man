@@ -3,7 +3,7 @@
 <plist version="1.0"><dict>
 <key>CFBundleName</key><string>ac-man</string>
 <key>CFBundleDisplayName</key><string>ac-man</string>
-<key>CFBundleIdentifier</key><string>local.midea-control</string>
+<key>CFBundleIdentifier</key><string>com.infovore-labs.acman</string>
 <key>CFBundleExecutable</key><string>AcMan</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>

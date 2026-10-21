@@ -85,3 +85,7 @@ docker-build: licenses
 
 trivy-image:
 	$(TRIVY) image --severity HIGH,CRITICAL --exit-code 1 '$(IMAGE)'
+
+.PHONY: ios
+ios:
+	BOLTFFI=$(BOLTFFI) ./scripts/build-ios.sh
