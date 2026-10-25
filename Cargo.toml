@@ -1,6 +1,6 @@
 [package]
 name = "ac-man"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2024"
 publish = false
 description = "Midea SmartHome cloud controller for macOS and the command line"
