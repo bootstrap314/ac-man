@@ -121,6 +121,16 @@ pub(crate) struct CloudClient {
     pub session: Option<CloudSession>,
     base_url: String,
 }
+pub(crate) fn session_expired(error: &AcError) -> bool {
+    matches!(
+        error,
+        AcError::Cloud {
+            code: 3004 | 3106 | 3144 | 3302 | 40002 | 65002 | 65006,
+            ..
+        }
+    )
+}
+
 impl CloudClient {
     pub fn new(client_id: String) -> Result<Self> {
         let builder = || {
@@ -245,7 +255,9 @@ impl CloudClient {
             let message = match code {
                 65027 => "The account has reached its signed-in device limit.",
                 3101 | 3102 => "Sign-in was rejected. Check the account and password.",
-                3004 | 3106 | 3144 | 3302 | 65002 | 65006 => "The session expired. Sign in again.",
+                3004 | 3106 | 3144 | 3302 | 40002 | 65002 | 65006 => {
+                    "The session expired. Sign in again."
+                }
                 1306 => "The command was accepted without an immediate reply.",
                 _ => "The service could not complete the request.",
             }
@@ -297,6 +309,20 @@ impl CloudClient {
             data_iv,
         });
         Ok(())
+    }
+    // Renew a rejected saved session once; do not loop on a persistent rejection.
+    pub async fn appliances_with_relogin(
+        &mut self,
+        account: &str,
+        password: &str,
+    ) -> Result<Vec<DiscoveredDevice>> {
+        match self.appliances().await {
+            Err(ref e) if session_expired(e) => {
+                self.login(account, password).await?;
+                self.appliances().await
+            }
+            result => result,
+        }
     }
     pub async fn appliances(&mut self) -> Result<Vec<DiscoveredDevice>> {
         if self.session.is_none() {

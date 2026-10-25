@@ -264,3 +264,43 @@ async fn command_removes_transport_envelope() {
     );
     complete(&c, 1);
 }
+
+#[tokio::test]
+async fn rejected_saved_token_renews_once_and_retries_inventory() {
+    for final_code in [0, 40002] {
+        let hash = hex::encode(Sha256::digest(APP_KEY.as_bytes()));
+        let mut c = authenticated(vec![
+            raw(200, json!({"code":40002}).to_string()),
+            ok(json!({"masUrl":INITIAL_URL})),
+            ok(json!({"loginId":"test-login"})),
+            ok(json!({"uid":"test-user",
+                "accessToken":encrypt("0123456789abcdef", &hash[..16], &hash[16..32]).unwrap(),
+                "randomData":encrypt("fedcba9876543210", &hash[..16], &hash[16..32]).unwrap(),
+                "mdata":{"accessToken":"renewed-token"}})),
+            raw(
+                200,
+                json!({"code":final_code,"data":{"list":[]}}).to_string(),
+            ),
+        ]);
+        let result = c
+            .appliances_with_relogin("test@example.invalid", "test-password")
+            .await;
+        assert_eq!(result.is_ok(), final_code == 0);
+        complete(&c, 5);
+        let requests = &c.mock.as_ref().unwrap().requests;
+        assert_eq!(requests[0].headers()["accessToken"], "synthetic-token");
+        assert_eq!(requests[4].headers()["accessToken"], "renewed-token");
+    }
+}
+
+#[tokio::test]
+async fn inventory_service_failure_does_not_create_another_login() {
+    let mut c = authenticated(vec![raw(503, "unavailable")]);
+    assert!(
+        c.appliances_with_relogin("test@example.invalid", "test-password")
+            .await
+            .is_err()
+    );
+    complete(&c, 1);
+    assert_eq!(c.session.as_ref().unwrap().access_token, "synthetic-token");
+}
